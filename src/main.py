@@ -30,6 +30,16 @@ class ServerAgent:
 
     def __init__(self):
         self.state_manager = StateManager()
+
+        # Optional PostgreSQL-backed chat history (for coherent dialog).
+        # Enabled when DATABASE_URL is set.
+        try:
+            from chat_db import ChatDB
+
+            self.chat_db = ChatDB()
+        except Exception:
+            self.chat_db = None
+
         self.telegram_bot = None
         self.telegram_client = None
         self.proactivity_loop = None
@@ -42,6 +52,14 @@ class ServerAgent:
     async def start(self):
         """Start all components."""
         logger.info("=== Starting Server-Agent ===")
+
+        # Ensure chat DB schema if enabled.
+        if self.chat_db:
+            try:
+                self.chat_db.ensure_schema()
+            except Exception as e:
+                logger.warning(f"ChatDB not available: {e}")
+                self.chat_db = None
 
         # Start minimal health/metrics server (optional)
         try:
@@ -79,8 +97,12 @@ class ServerAgent:
         self.telegram_bot = TelegramBot(
             self.state_manager,
             on_task_callback=self.on_task_assigned,
-            telegram_client=self.telegram_client
+            telegram_client=self.telegram_client,
         )
+
+        # Share ChatDB with components (optional)
+        if self.chat_db:
+            self.telegram_bot.chat_db = self.chat_db
 
         # Initialize proactivity loop (autonomous actions only)
         self.proactivity_loop = ProactivityLoop(
@@ -95,6 +117,10 @@ class ServerAgent:
             self.telegram_bot,
             self.proactivity_loop.executor  # Share action executor
         )
+
+        # Share ChatDB with reactive loop (optional)
+        if self.chat_db:
+            self.reactive_loop.chat_db = self.chat_db
 
         # Link proactivity_loop to telegram_bot for quick acknowledgments
         self.telegram_bot.proactivity_loop = self.proactivity_loop

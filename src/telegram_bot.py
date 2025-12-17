@@ -36,6 +36,9 @@ class TelegramBot:
         self.token = os.getenv("TELEGRAM_API_TOKEN")
         self.bot_name = os.getenv("TELEGRAM_BOT_NAME")
 
+        # Optional PostgreSQL chat history store (injected by ServerAgent)
+        self.chat_db = None
+
         # Support multiple master chat IDs (comma-separated)
         master_ids_str = os.getenv("MASTER_CHAT_IDS") or os.getenv("MASTER_MAX_TELEGRAM_CHAT_ID")
         self.master_chat_ids = [int(x.strip()) for x in master_ids_str.split(",")]
@@ -297,6 +300,24 @@ class TelegramBot:
 
         except Exception as e:
             logger.error(f"Attachment download failed: {e}", exc_info=True)
+
+        # Persist incoming user message into DB (optional)
+        if self.chat_db and update.effective_chat:
+            try:
+                from chat_db import ChatMessage
+
+                self.chat_db.log_message(
+                    ChatMessage(
+                        role="user",
+                        chat_id=int(update.effective_chat.id),
+                        message_id=int(msg.message_id) if msg.message_id else None,
+                        user_id=int(update.effective_user.id) if update.effective_user else None,
+                        text=message_text or "",
+                        attachments={"items": attachments} if attachments else None,
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"ChatDB user log failed: {e}")
 
         # If there's a pending question, treat this as the answer.
         if self.pending_question:

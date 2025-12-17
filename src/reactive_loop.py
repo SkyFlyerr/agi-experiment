@@ -48,6 +48,9 @@ class ReactiveLoop:
         self.telegram_bot = telegram_bot
         self.executor = action_executor
 
+        # Optional PostgreSQL chat history store (injected by ServerAgent)
+        self.chat_db = None
+
         # Claude access: prefer Claude Code CLI authenticated via Claude Max subscription.
         # Pay-as-you-go API is disabled by default.
         self.claude = ClaudeClient()
@@ -108,6 +111,7 @@ class ReactiveLoop:
         chat_id = data.get('chat_id')
 
         logger.info(f"ReactiveLoop: Handling user message: {message[:50]}...")
+        logger.info(f"ReactiveLoop: chat_id={chat_id}")
 
         # Classify message intent
         intent = await self._classify_intent(message)
@@ -505,6 +509,8 @@ class ReactiveLoop:
             current_focus = (context.get("current_session") or {}).get("current_focus", "unknown")
             recent_actions = (context.get("working_memory") or {}).get("recent_actions") or []
 
+            recent_dialog = self._get_recent_dialog_context(chat_id)
+
             # Build prompt with context
             prompt = f"""Ответь на вопрос пользователя.
 
@@ -514,9 +520,15 @@ class ReactiveLoop:
 - Текущий фокус: {current_focus}
 - Недавние действия: {len(recent_actions)}
 
+История диалога (последние сообщения):
+{recent_dialog}
+
 Дай краткий и полезный ответ."""
 
             response = await self._call_claude(prompt, max_tokens=1200)
+
+            # Persist assistant message to DB (optional)
+            self._log_assistant_message(chat_id=chat_id, text=response)
 
             # Send answer
             await self.telegram_bot.application.bot.send_message(
@@ -536,14 +548,22 @@ class ReactiveLoop:
     async def _handle_conversation(self, message: str, chat_id: int):
         """Handle casual conversation"""
         try:
+            recent_dialog = self._get_recent_dialog_context(chat_id)
+
             # Simple conversational response
             prompt = f"""Ответь на сообщение пользователя в дружелюбном тоне.
 
 Сообщение: {message}
 
+История диалога (последние сообщения):
+{recent_dialog}
+
 Дай короткий естественный ответ (1-2 предложения)."""
 
             response = await self._call_claude(prompt, max_tokens=800)
+
+            # Persist assistant message to DB (optional)
+            self._log_assistant_message(chat_id=chat_id, text=response)
 
             # Send response
             await self.telegram_bot.application.bot.send_message(
@@ -554,6 +574,53 @@ class ReactiveLoop:
 
         except Exception as e:
             logger.error(f"Error in conversation: {e}", exc_info=True)
+
+    def _get_recent_dialog_context(self, chat_id: int | None, limit: int = 20) -> str:
+        """Return formatted dialog context for Claude prompt."""
+        if not chat_id or not self.chat_db:
+            return "(нет данных)"
+
+        try:
+            rows = self.chat_db.fetch_recent(int(chat_id), limit=limit)
+            if not rows:
+                return "(нет данных)"
+
+            lines: List[str] = []
+            for r in rows:
+                role = (r.get("role") or "?").strip()
+                text = (r.get("text") or "").strip()
+                if not text:
+                    continue
+                # Keep it compact
+                text = text.replace("\n", " ")
+                if len(text) > 600:
+                    text = text[:600] + "…"
+                lines.append(f"{role}: {text}")
+
+            return "\n".join(lines) if lines else "(нет данных)"
+        except Exception as e:
+            logger.warning(f"ReactiveLoop: fetch_recent dialog failed: {e}")
+            return "(нет данных)"
+
+    def _log_assistant_message(self, *, chat_id: int | None, text: str) -> None:
+        if not chat_id or not self.chat_db:
+            return
+
+        try:
+            from chat_db import ChatMessage
+
+            self.chat_db.log_message(
+                ChatMessage(
+                    role="assistant",
+                    chat_id=int(chat_id),
+                    message_id=None,
+                    user_id=None,
+                    text=text or "",
+                    attachments=None,
+                )
+            )
+        except Exception as e:
+            logger.warning(f"ReactiveLoop: assistant log failed: {e}")
 
     async def _call_claude(self, prompt: str, *, max_tokens: int, timeout_s: int | None = None) -> str:
         """Call Claude via ClaudeClient (prefers Claude Code CLI / Max subscription)."""
