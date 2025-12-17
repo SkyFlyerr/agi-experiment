@@ -8,6 +8,13 @@ GET_THREAD_BY_CHAT_ID = """
     LIMIT 1
 """
 
+GET_THREAD_BY_ID = """
+    SELECT id, platform, chat_id, created_at, updated_at
+    FROM chat_threads
+    WHERE id = $1
+    LIMIT 1
+"""
+
 CREATE_THREAD = """
     INSERT INTO chat_threads (platform, chat_id)
     VALUES ($1, $2)

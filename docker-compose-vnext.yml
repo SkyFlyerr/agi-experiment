@@ -1,0 +1,174 @@
+version: '3.8'
+
+# ===================================================================
+# Server Agent vNext: Docker Compose Configuration
+# ===================================================================
+# Complete infrastructure for autonomous AGI agent
+# Services: PostgreSQL (database), FastAPI app, optional MinIO (storage)
+
+services:
+  # ===================================================================
+  # PostgreSQL Database
+  # ===================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: server_agent_vnext_postgres
+    restart: unless-stopped
+
+    # Environment variables from .env.postgres.vnext
+    env_file:
+      - ./.env.postgres.vnext
+
+    # Port binding (localhost only for security)
+    ports:
+      - "127.0.0.1:5432:5432"
+
+    # Data persistence across container restarts
+    volumes:
+      - server_agent_vnext_pgdata:/var/lib/postgresql/data
+      # Optional: mount initialization scripts
+      - ./scripts/postgres:/docker-entrypoint-initdb.d
+
+    # Health check for container orchestration
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Labels for container tracking and rollback
+    labels:
+      deployment.group: "server_agent_vnext"
+      deployment.service: "postgres"
+      deployment.critical: "true"
+
+  # ===================================================================
+  # FastAPI Application Server
+  # ===================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: server_agent_vnext_app
+    restart: unless-stopped
+
+    # Depends on postgres being healthy
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    # Environment configuration
+    env_file:
+      - ./.env.vnext
+
+    # Port exposure for web interface and webhook
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    # Volumes for application data and logs
+    volumes:
+      - ./app:/app/app:ro                    # Read-only app code mount
+      - ./logs:/app/logs                      # Persistent logs
+      - ./data:/app/data                      # Persistent data directory
+
+    # Health check for container readiness
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+    # Resource limits to prevent runaway processes
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+        labels: "app=server_agent_vnext"
+
+    # Labels for container tracking and rollback
+    labels:
+      deployment.group: "server_agent_vnext"
+      deployment.service: "app"
+      deployment.critical: "true"
+      deployment.rollback-enabled: "true"
+
+  # ===================================================================
+  # MinIO Object Storage (Optional: for media and data persistence)
+  # ===================================================================
+  # Uncomment to enable S3-compatible object storage
+  #
+  # minio:
+  #   image: minio/minio:latest
+  #   container_name: server_agent_vnext_minio
+  #   restart: unless-stopped
+  #
+  #   env_file:
+  #     - ./.env.vnext
+  #
+  #   ports:
+  #     - "127.0.0.1:9000:9000"     # S3 API
+  #     - "127.0.0.1:9001:9001"     # Web UI
+  #
+  #   environment:
+  #     MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+  #     MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+  #
+  #   volumes:
+  #     - server_agent_vnext_minio_data:/data
+  #
+  #   command: server /data --console-address ":9001"
+  #
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '1'
+  #         memory: 512M
+
+# ===================================================================
+# Volumes: Persistent Storage
+# ===================================================================
+volumes:
+  # PostgreSQL data persistence
+  server_agent_vnext_pgdata:
+    driver: local
+
+  # MinIO data persistence (uncomment if MinIO enabled)
+  # server_agent_vnext_minio_data:
+  #   driver: local
+
+# ===================================================================
+# Networks: Service Communication
+# ===================================================================
+networks:
+  default:
+    name: server_agent_vnext_network
+    driver: bridge

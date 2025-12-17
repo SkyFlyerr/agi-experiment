@@ -1,0 +1,120 @@
+#!/bin/bash
+
+################################################################################
+# post-receive - Git Hook for Automated Deployment
+#
+# This hook is triggered when code is pushed to the server repository.
+# It detects pushes to the main branch and triggers the deployment pipeline.
+#
+# Installation:
+# 1. On the VPS server, place this in .git/hooks/post-receive
+# 2. Make it executable: chmod +x .git/hooks/post-receive
+# 3. Configure environment variables in the script below
+#
+# Usage:
+# - Push code to main branch: git push origin main
+# - Hook automatically runs deployment pipeline
+# - Master receives Telegram notification with results
+################################################################################
+
+set -e  # Exit on any error
+
+# === Configuration ===
+# These should match your deployment environment
+REPO_PATH="$(pwd)"
+MAIN_BRANCH="main"
+DEPLOY_SCRIPT="./scripts/build_and_deploy.sh"
+LOG_DIR="${REPO_PATH}/logs"
+HOOK_LOG="${LOG_DIR}/post-receive_$(date '+%Y-%m-%d_%H-%M-%S').log"
+
+# === Colors for output ===
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m'  # No Color
+
+# === Logging functions ===
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$HOOK_LOG"
+}
+
+log_success() {
+    echo -e "${GREEN}[✓]${NC} $1" | tee -a "$HOOK_LOG"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1" | tee -a "$HOOK_LOG"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1" | tee -a "$HOOK_LOG"
+}
+
+# === Ensure log directory exists ===
+mkdir -p "$LOG_DIR"
+
+log_info "=========================================="
+log_info "Git Post-Receive Hook Triggered"
+log_info "=========================================="
+log_info "Repository: $REPO_PATH"
+log_info "Hook log: $HOOK_LOG"
+
+# === Process git refs ===
+while read oldrev newrev refname; do
+    # Extract branch name from ref
+    branch=$(git rev-parse --symbolic --abbrev-ref "$refname")
+
+    log_info "Ref: $refname"
+    log_info "Branch: $branch"
+    log_info "Old SHA: $oldrev"
+    log_info "New SHA: $newrev"
+
+    # === Check if push is to main branch ===
+    if [ "$branch" = "$MAIN_BRANCH" ]; then
+        log_success "Push detected to main branch"
+        log_info "=========================================="
+        log_info "Triggering Deployment Pipeline"
+        log_info "=========================================="
+
+        # === Verify deployment script exists ===
+        if [ ! -f "$DEPLOY_SCRIPT" ]; then
+            log_error "Deployment script not found: $DEPLOY_SCRIPT"
+            exit 1
+        fi
+
+        # === Run deployment in background ===
+        log_info "Starting deployment (running in background)..."
+        (
+            # Change to repo directory
+            cd "$REPO_PATH"
+
+            # Run deployment pipeline
+            if bash "$DEPLOY_SCRIPT" >> "$HOOK_LOG" 2>&1; then
+                log_success "Deployment pipeline completed successfully"
+                exit 0
+            else
+                EXIT_CODE=$?
+                log_error "Deployment pipeline failed with exit code: $EXIT_CODE"
+                exit $EXIT_CODE
+            fi
+        ) &
+
+        # Get background process PID
+        DEPLOY_PID=$!
+        log_info "Deployment process started (PID: $DEPLOY_PID)"
+        log_info "Deployment logs: $HOOK_LOG"
+        log_info "Monitor progress: tail -f $HOOK_LOG"
+
+        # Note: We don't wait for deployment to complete in the hook
+        # This allows git push to return immediately to the developer
+        # while deployment proceeds on the server in the background
+
+    else
+        log_info "Push to non-main branch ($branch) - skipping deployment"
+    fi
+
+done
+
+log_success "Post-receive hook completed"
+exit 0

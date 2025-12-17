@@ -5,7 +5,7 @@ from typing import Optional
 from uuid import UUID
 
 from .models import ChatThread
-from .queries import GET_THREAD_BY_CHAT_ID, CREATE_THREAD, UPDATE_THREAD_TIMESTAMP
+from .queries import GET_THREAD_BY_CHAT_ID, GET_THREAD_BY_ID, CREATE_THREAD, UPDATE_THREAD_TIMESTAMP
 from . import get_db
 
 logger = logging.getLogger(__name__)
@@ -96,8 +96,36 @@ async def get_thread_by_chat_id(platform: str, chat_id: str) -> Optional[ChatThr
         raise
 
 
+async def get_thread_by_id(thread_id: UUID) -> Optional[ChatThread]:
+    """
+    Get thread by ID.
+
+    Args:
+        thread_id: Thread UUID
+
+    Returns:
+        ChatThread instance or None if not found
+    """
+    db = get_db()
+
+    try:
+        row = await db.fetch_one(GET_THREAD_BY_ID, thread_id)
+
+        if row:
+            logger.debug(f"Found thread: {thread_id}")
+            return ChatThread(**row)
+
+        logger.debug(f"Thread not found: {thread_id}")
+        return None
+
+    except Exception as e:
+        logger.error(f"Error fetching thread {thread_id}: {e}")
+        raise
+
+
 __all__ = [
     "get_or_create_thread",
     "update_thread",
     "get_thread_by_chat_id",
+    "get_thread_by_id",
 ]
