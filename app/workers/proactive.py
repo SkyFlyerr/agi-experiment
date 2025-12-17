@@ -95,7 +95,7 @@ class ProactiveScheduler:
                 await send_message(
                     chat_id=str(master_chat_ids[0]),
                     text="🤖 <b>Proactive Agent Online</b>\n\nAutonomous decision loop initiated.\n\n<i>Atmano moksartha jagat hitaya ca</i>",
-                    parse_mode="HTML",
+                    
                 )
         except Exception as e:
             logger.error(f"Error sending startup notification: {e}")
@@ -331,7 +331,7 @@ class ProactiveScheduler:
             await send_message(
                 chat_id=str(master_chat_ids[0]),
                 text=message,
-                parse_mode="HTML",
+                
             )
 
             logger.info("Notified Master of significant result")
@@ -360,7 +360,7 @@ class ProactiveScheduler:
             await send_message(
                 chat_id=str(master_chat_ids[0]),
                 text=message,
-                parse_mode="HTML",
+                
             )
 
             logger.info("Approval request sent to Master")
@@ -394,7 +394,7 @@ class ProactiveScheduler:
             await send_message(
                 chat_id=str(master_chat_ids[0]),
                 text=message,
-                parse_mode="HTML",
+                
             )
 
             logger.info("Notified Master of budget exhaustion")
@@ -429,7 +429,7 @@ class ProactiveScheduler:
             await send_message(
                 chat_id=str(master_chat_ids[0]),
                 text=message,
-                parse_mode="HTML",
+                
             )
 
             logger.info("Notified Master of rate limit")
@@ -451,7 +451,7 @@ class ProactiveScheduler:
             await send_message(
                 chat_id=str(master_chat_ids[0]),
                 text=message,
-                parse_mode="HTML",
+                
             )
 
             logger.info("Notified Master of rate limit resume")
