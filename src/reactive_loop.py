@@ -501,14 +501,18 @@ class ReactiveLoop:
             # Get context
             context = self.state_manager.load_context()
 
+            # Fix: current_focus is stored in current_session, not working_memory
+            current_focus = (context.get("current_session") or {}).get("current_focus", "unknown")
+            recent_actions = (context.get("working_memory") or {}).get("recent_actions") or []
+
             # Build prompt with context
             prompt = f"""Ответь на вопрос пользователя.
 
 Вопрос: {question}
 
 Контекст:
-- Текущий фокус: {context['working_memory']['current_focus']}
-- Недавние действия: {len(context['working_memory']['recent_actions'])}
+- Текущий фокус: {current_focus}
+- Недавние действия: {len(recent_actions)}
 
 Дай краткий и полезный ответ."""
 
