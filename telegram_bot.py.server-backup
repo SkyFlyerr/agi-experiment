@@ -1,0 +1,361 @@
+"""src/telegram_bot.py
+
+Telegram Bot - Primary communication interface with humans.
+"""
+
+import asyncio
+import logging
+import os
+from typing import Callable, Optional
+
+from telegram import Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes
+)
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+
+class TelegramBot:
+    """Telegram bot for agent communication"""
+
+    def __init__(self, state_manager, on_task_callback: Optional[Callable] = None, telegram_client=None):
+        self.token = os.getenv("TELEGRAM_API_TOKEN")
+        self.bot_name = os.getenv("TELEGRAM_BOT_NAME")
+        self.master_chat_id = int(os.getenv("MASTER_MAX_TELEGRAM_CHAT_ID"))
+        self.state_manager = state_manager
+        self.on_task_callback = on_task_callback
+        self.telegram_client = telegram_client  # Reference to user client for approvals
+        self.application = None
+
+        # Simple request/response channel for ask_master()
+        self.pending_question: Optional[str] = None
+        self._pending_future: Optional[asyncio.Future] = None
+
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /start command"""
+        await update.message.reply_text(
+            "🤖 <b>Server-Agent Online</b>\n\n"
+            "I am an autonomous AGI agent running on a server.\n\n"
+            "<b>Available commands:</b>\n"
+            "/status - Current state and focus\n"
+            "/task <description> - Assign a task\n"
+            "/pause - Pause autonomous operation\n"
+            "/resume - Resume operation\n"
+            "/report - Detailed activity report\n"
+            "/skills - List learned skills\n"
+            "/help - Show this message",
+            parse_mode="HTML"
+        )
+
+    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /status command"""
+        summary = self.state_manager.get_session_summary()
+
+        status_text = (
+            f"📊 <b>Agent Status</b>\n\n"
+            f"<b>Current Focus:</b> {summary['current_focus']}\n"
+            f"<b>Certainty Level:</b> {summary['certainty']:.1%}\n"
+            f"<b>Session Cycles:</b> {summary['cycles']}\n"
+            f"<b>Active Tasks:</b> {summary['active_tasks']}\n"
+            f"<b>Recent Actions:</b> {summary['recent_actions']}\n\n"
+            f"<b>All-Time Metrics:</b>\n"
+            f"Total Cycles: {summary['total_cycles_all_time']}\n"
+            f"Autonomy Ratio: {summary['autonomous_ratio']:.1%}\n"
+            f"Token Usage (24h): {summary['token_usage_24h']:,}\n\n"
+            f"Started: {summary['started_at'][:19]}"
+        )
+
+        await update.message.reply_text(status_text, parse_mode="HTML")
+
+    async def task_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /task command"""
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Please provide a task description.\n"
+                "Example: /task Learn about blockchain",
+                parse_mode="HTML"
+            )
+            return
+
+        task_description = " ".join(context.args)
+
+        task = {
+            "id": f"task_{update.message.message_id}",
+            "description": task_description,
+            "assigned_by": update.effective_user.id,
+            "priority": "high" if update.effective_user.id == self.master_chat_id else "normal"
+        }
+
+        self.state_manager.add_task(task)
+
+        # Add signal to notify proactivity loop
+        self.state_manager.add_signal("task_assigned", {
+            "task_id": task["id"],
+            "description": task_description,
+            "priority": task["priority"],
+            "user_id": update.effective_user.id
+        })
+
+        await update.message.reply_text(
+            f"✅ <b>Task Added</b>\n\n"
+            f"Description: {task_description}\n"
+            f"Priority: {task['priority']}\n\n"
+            f"I will work on this immediately.",
+            parse_mode="HTML"
+        )
+
+        # Trigger task callback if available
+        if self.on_task_callback:
+            await self.on_task_callback(task)
+
+    async def report_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /report command"""
+        ctx = self.state_manager.load_context()
+
+        recent_actions = ctx["working_memory"]["recent_actions"][-5:]
+
+        report = "📋 <b>Activity Report</b>\n\n"
+
+        if recent_actions:
+            report += "<b>Recent Actions:</b>\n"
+            for i, action in enumerate(recent_actions, 1):
+                action_type = action["action"].get("action", "unknown")
+                timestamp = action["timestamp"][:19]
+                report += f"{i}. {action_type} ({timestamp})\n"
+        else:
+            report += "No recent actions.\n"
+
+        report += f"\n<b>Skills Learned:</b> {len(ctx['long_term_memory']['skills_learned'])}\n"
+
+        await update.message.reply_text(report, parse_mode="HTML")
+
+    async def skills_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /skills command"""
+        ctx = self.state_manager.load_context()
+        skills = ctx["long_term_memory"]["skills_learned"]
+
+        if not skills:
+            await update.message.reply_text(
+                "📚 No skills learned yet.\n\n"
+                "I am ready to learn! Assign me tasks to develop new capabilities.",
+                parse_mode="HTML"
+            )
+            return
+
+        skills_text = "📚 <b>Learned Skills</b>\n\n"
+        for skill in skills:
+            skills_text += f"• {skill['name']} (learned {skill['learned_at'][:10]})\n"
+
+        await update.message.reply_text(skills_text, parse_mode="HTML")
+
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /help command"""
+        await self.start_command(update, context)
+
+    async def approve_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /approve command - approve agent to message someone"""
+        if update.effective_user.id != self.master_chat_id:
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Please provide a username.\n"
+                "Example: /approve username",
+                parse_mode="HTML"
+            )
+            return
+
+        username = context.args[0].lstrip('@')
+
+        # Approve in client
+        if self.telegram_client:
+            self.telegram_client.approve_contact(username)
+            await update.message.reply_text(
+                f"✅ <b>Approved</b>\n\n"
+                f"Agent can now message @{username}",
+                parse_mode="HTML"
+            )
+        else:
+            await update.message.reply_text(
+                "❌ Telegram client not available",
+                parse_mode="HTML"
+            )
+
+    async def deny_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /deny command - deny agent from messaging someone"""
+        if update.effective_user.id != self.master_chat_id:
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Please provide a username.\n"
+                "Example: /deny username",
+                parse_mode="HTML"
+            )
+            return
+
+        username = context.args[0].lstrip('@')
+
+        # Deny in client
+        if self.telegram_client:
+            self.telegram_client.deny_contact(username)
+            await update.message.reply_text(
+                f"❌ <b>Denied</b>\n\n"
+                f"Agent will not message @{username}",
+                parse_mode="HTML"
+            )
+        else:
+            await update.message.reply_text(
+                "❌ Telegram client not available",
+                parse_mode="HTML"
+            )
+
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle regular messages (for answering questions)"""
+        # Only respond to Master for now
+        if update.effective_user.id != self.master_chat_id:
+            return
+
+        # If there's a pending question, treat this as the answer
+        if self.pending_question:
+            answer_text = update.message.text
+
+            # Resolve waiting future (if any)
+            if self._pending_future and not self._pending_future.done():
+                self._pending_future.set_result(answer_text)
+
+            # Add signal for guidance received (so the loop can react even if it isn't awaiting)
+            self.state_manager.add_signal(
+                "guidance_received",
+                {
+                    "question": self.pending_question,
+                    "answer": answer_text,
+                    "user_id": update.effective_user.id,
+                },
+            )
+
+            await update.message.reply_text(
+                "✅ Thank you for your guidance. Proceeding with your input.",
+                parse_mode="HTML",
+            )
+
+            self.pending_question = None
+            self._pending_future = None
+        else:
+            # Regular conversation - add signal
+            self.state_manager.add_signal("user_message", {
+                "message": update.message.text,
+                "user_id": update.effective_user.id,
+                "message_id": update.message.message_id,
+                "chat_id": update.effective_chat.id
+            })
+
+            # React with 👀 emoji instead of sending message
+            try:
+                await update.message.set_reaction("👀")
+            except Exception as e:
+                logger.warning(f"Could not set reaction: {e}")
+
+    async def ask_master(self, question: str) -> str:
+        """Ask Master a question and wait for response.
+
+        This is used by the agent loop when certainty is below threshold.
+        """
+        self.pending_question = question
+        self._pending_future = asyncio.get_running_loop().create_future()
+
+        # Send question to Master
+        await self.application.bot.send_message(
+            chat_id=self.master_chat_id,
+            text=(
+                "🤔 <b>Question from Agent</b>\n\n"
+                f"{question}\n\n"
+                "Please reply with your guidance."
+            ),
+            parse_mode="HTML",
+        )
+
+        try:
+            # Conservative timeout to avoid blocking the whole loop forever.
+            answer = await asyncio.wait_for(self._pending_future, timeout=30 * 60)
+            return str(answer)
+        except asyncio.TimeoutError:
+            # Keep pending_question cleared to avoid misrouting future messages.
+            self.pending_question = None
+            self._pending_future = None
+            return "(timeout waiting for Master guidance)"
+
+    async def notify_master(self, message: str):
+        """Send notification to Master"""
+        await self.application.bot.send_message(
+            chat_id=self.master_chat_id,
+            text=f"ℹ️ {message}",
+            parse_mode="HTML"
+        )
+
+    def setup_handlers(self):
+        """Setup command and message handlers"""
+        self.application.add_handler(CommandHandler("start", self.start_command))
+        self.application.add_handler(CommandHandler("help", self.help_command))
+        self.application.add_handler(CommandHandler("status", self.status_command))
+        self.application.add_handler(CommandHandler("task", self.task_command))
+        self.application.add_handler(CommandHandler("report", self.report_command))
+        self.application.add_handler(CommandHandler("skills", self.skills_command))
+
+        # Permission management commands
+        self.application.add_handler(CommandHandler("approve", self.approve_command))
+        self.application.add_handler(CommandHandler("deny", self.deny_command))
+
+        # Handle regular messages
+        self.application.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
+        )
+
+    async def start(self):
+        """Start the bot"""
+        self.application = Application.builder().token(self.token).build()
+        self.setup_handlers()
+
+        logger.info(f"Starting Telegram bot: @{self.bot_name}")
+        await self.application.initialize()
+        await self.application.start()
+        await self.application.updater.start_polling()
+
+    async def stop(self):
+        """Stop the bot"""
+        if self.application:
+            await self.application.updater.stop()
+            await self.application.stop()
+            await self.application.shutdown()
+            logger.info("Telegram bot stopped")
+
+
+# Standalone mode for testing
+if __name__ == "__main__":
+    import asyncio
+    from state_manager import StateManager
+
+    async def main():
+        state_mgr = StateManager()
+        bot = TelegramBot(state_mgr)
+        await bot.start()
+
+        try:
+            # Keep running
+            await asyncio.Event().wait()
+        except KeyboardInterrupt:
+            await bot.stop()
+
+    asyncio.run(main())

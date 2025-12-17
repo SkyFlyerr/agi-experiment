@@ -1,0 +1,25 @@
+[Unit]
+Description=Server-Agent - Autonomous AGI Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/server-agent
+Environment="PATH=/usr/local/bin:/usr/bin:/bin:/opt/server-agent/venv/bin"
+EnvironmentFile=/opt/server-agent/.env
+ExecStart=/opt/server-agent/venv/bin/python /opt/server-agent/src/main.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/server-agent/logs/systemd.log
+StandardError=append:/opt/server-agent/logs/systemd-error.log
+
+# Logging
+SyslogIdentifier=server-agent
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
