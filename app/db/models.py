@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, Dict, Any
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 # Enums for status fields
@@ -143,6 +143,15 @@ class TokenLedger(BaseModel):
     tokens_total: int = 0
     created_at: datetime
     meta_json: Optional[Dict[str, Any]] = None
+
+    @field_validator('meta_json', mode='before')
+    @classmethod
+    def parse_meta_json(cls, v):
+        """Parse meta_json if it's a JSON string."""
+        if isinstance(v, str):
+            import json
+            return json.loads(v)
+        return v
 
 
 class Deployment(BaseModel):

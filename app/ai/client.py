@@ -147,25 +147,8 @@ class ClaudeClient:
 
 
 # Global client instance
-_claude_client: Optional[ClaudeClient] = None
-
-
-def get_claude_client() -> ClaudeClient:
-    """
-    Get or create global Claude client instance.
-
-    Returns:
-        ClaudeClient instance
-    """
-    global _claude_client
-
-    if _claude_client is None:
-        _claude_client = ClaudeClient(
-            api_key=settings.CLAUDE_CODE_OAUTH_TOKEN,
-            model="claude-3-5-sonnet-20241022",
-        )
-
-    return _claude_client
+# Note: get_claude_client() is now defined at the top of this file (line 16)
+# It automatically chooses ClaudeClient vs ClaudeCLIClient based on token type
 
 
 __all__ = ["ClaudeClient", "get_claude_client"]

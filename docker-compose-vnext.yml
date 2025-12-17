@@ -81,6 +81,7 @@ services:
       - ./app:/app/app:ro                    # Read-only app code mount
       - ./logs:/app/logs                      # Persistent logs
       - ./data:/app/data                      # Persistent data directory
+      - /usr/bin/claude:/usr/local/bin/claude:ro  # Mount Claude CLI from host
 
     # Health check for container readiness
     healthcheck:

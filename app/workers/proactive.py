@@ -7,7 +7,7 @@ making decisions, executing actions, and managing resources intelligently.
 import asyncio
 import logging
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import json
 
 from app.config import settings
@@ -17,6 +17,7 @@ from app.ai import (
     check_budget_available,
     get_remaining_budget,
     get_token_stats,
+    RateLimitError,
 )
 from app.workers.decision_engine import (
     parse_decision,
@@ -44,6 +45,9 @@ class ProactiveScheduler:
         self.running = False
         self.task: Optional[asyncio.Task] = None
         self.cycle_count = 0
+        
+        # Rate limit tracking
+        self.rate_limit_until: Optional[datetime] = None
 
         # Configuration
         self.min_interval = settings.PROACTIVE_MIN_INTERVAL_SECONDS
@@ -98,6 +102,24 @@ class ProactiveScheduler:
 
         while self.running:
             try:
+                # Check if we're in rate limit cooldown
+                if self.rate_limit_until:
+                    now = datetime.now(timezone.utc)
+                    if now < self.rate_limit_until:
+                        sleep_seconds = (self.rate_limit_until - now).total_seconds()
+                        logger.info(
+                            f"Rate limit active. Sleeping until {self.rate_limit_until.isoformat()} "
+                            f"({sleep_seconds:.0f}s remaining)"
+                        )
+                        await asyncio.sleep(sleep_seconds)
+                    
+                    # Rate limit period has passed
+                    self.rate_limit_until = None
+                    logger.info("Rate limit period ended, resuming proactive cycle")
+                    
+                    # Notify Master that we're resuming
+                    await self._notify_rate_limit_resumed()
+
                 # Run a single proactive cycle
                 await self.run_cycle()
 
@@ -228,6 +250,21 @@ class ProactiveScheduler:
 
             cycle_duration = (datetime.utcnow() - cycle_start).total_seconds()
             logger.info(f"Cycle {self.cycle_count} completed in {cycle_duration:.1f}s")
+
+        except RateLimitError as e:
+            logger.warning(f"Rate limit reached in cycle {self.cycle_count}: {e.message}")
+            
+            # Notify Master about rate limit
+            await self._notify_rate_limit(e)
+            
+            # Set cooldown until reset time
+            if e.reset_time:
+                self.rate_limit_until = e.reset_time
+                logger.info(f"Rate limit cooldown set until {e.reset_time.isoformat()}")
+            else:
+                # Fallback: wait 1 hour if couldn't parse reset time
+                self.rate_limit_until = datetime.now(timezone.utc) + timedelta(hours=1)
+                logger.warning("Could not parse reset time, defaulting to 1 hour cooldown")
 
         except Exception as e:
             logger.error(f"Error in cycle {self.cycle_count}: {e}", exc_info=True)
@@ -364,6 +401,63 @@ class ProactiveScheduler:
 
         except Exception as e:
             logger.error(f"Error notifying budget exhaustion: {e}")
+
+    async def _notify_rate_limit(self, error: RateLimitError) -> None:
+        """Notify Master that API rate limit was reached."""
+        try:
+            master_chat_ids = settings.master_chat_ids_list
+            if not master_chat_ids:
+                return
+
+            # Format reset time for display
+            if error.reset_time:
+                reset_str = error.reset_time.strftime("%H:%M UTC")
+                time_remaining = error.reset_time - datetime.now(timezone.utc)
+                hours, remainder = divmod(int(time_remaining.total_seconds()), 3600)
+                minutes = remainder // 60
+                duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+            else:
+                reset_str = "неизвестно"
+                duration_str = "~1 час"
+
+            message = f"⏸️ <b>Rate Limit Reached</b>\n\n"
+            message += f"Проактивный цикл приостановлен.\n\n"
+            message += f"<b>Сброс лимита:</b> {reset_str}\n"
+            message += f"<b>Ожидание:</b> {duration_str}\n\n"
+            message += f"<i>Продолжу работу автоматически.</i>"
+
+            await send_message(
+                chat_id=str(master_chat_ids[0]),
+                text=message,
+                parse_mode="HTML",
+            )
+
+            logger.info("Notified Master of rate limit")
+
+        except Exception as e:
+            logger.error(f"Error notifying rate limit: {e}")
+
+    async def _notify_rate_limit_resumed(self) -> None:
+        """Notify Master that proactive cycle is resuming after rate limit."""
+        try:
+            master_chat_ids = settings.master_chat_ids_list
+            if not master_chat_ids:
+                return
+
+            message = f"▶️ <b>Resuming Proactive Cycle</b>\n\n"
+            message += f"Период ограничения закончился.\n"
+            message += f"Продолжаю автономную работу."
+
+            await send_message(
+                chat_id=str(master_chat_ids[0]),
+                text=message,
+                parse_mode="HTML",
+            )
+
+            logger.info("Notified Master of rate limit resume")
+
+        except Exception as e:
+            logger.error(f"Error notifying rate limit resume: {e}")
 
 
 # Global scheduler instance

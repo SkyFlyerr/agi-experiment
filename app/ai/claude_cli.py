@@ -3,7 +3,9 @@
 import logging
 import subprocess
 import json
+import re
 from typing import Dict, Any, Optional, List
+from datetime import datetime, timezone
 
 from app.config import settings
 from app.db import get_db
@@ -11,6 +13,72 @@ from app.db.tokens import log_tokens
 from app.db.models import TokenScope
 
 logger = logging.getLogger(__name__)
+
+
+class RateLimitError(Exception):
+    """Exception raised when Claude API rate limit is reached."""
+
+    def __init__(self, message: str, reset_time: Optional[datetime] = None):
+        """
+        Initialize RateLimitError.
+
+        Args:
+            message: Original error message from Claude CLI
+            reset_time: Datetime when the rate limit resets (UTC)
+        """
+        super().__init__(message)
+        self.message = message
+        self.reset_time = reset_time or self._parse_reset_time(message)
+
+    @staticmethod
+    def _parse_reset_time(message: str) -> Optional[datetime]:
+        """
+        Parse reset time from error message.
+
+        Handles format: "Limit reached · resets 1am (UTC)"
+
+        Args:
+            message: Error message containing reset time
+
+        Returns:
+            Datetime of reset time in UTC, or None if parsing fails
+        """
+        try:
+            # Pattern: "resets 1am (UTC)" or "resets 1pm (UTC)"
+            match = re.search(r'resets\s+(\d{1,2})(am|pm)\s*\(UTC\)', message, re.IGNORECASE)
+            if not match:
+                return None
+
+            hour = int(match.group(1))
+            period = match.group(2).lower()
+
+            # Convert to 24-hour format
+            if period == 'pm' and hour != 12:
+                hour += 12
+            elif period == 'am' and hour == 12:
+                hour = 0
+
+            # Get current UTC time
+            now = datetime.now(timezone.utc)
+
+            # Build reset datetime for today
+            reset_time = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+
+            # If reset time already passed today, it's tomorrow
+            if reset_time <= now:
+                reset_time = reset_time.replace(day=now.day + 1)
+
+            logger.info(f"Parsed rate limit reset time: {reset_time.isoformat()}")
+            return reset_time
+
+        except Exception as e:
+            logger.warning(f"Failed to parse reset time from '{message}': {e}")
+            return None
+
+    @staticmethod
+    def is_rate_limit_error(message: str) -> bool:
+        """Check if error message indicates a rate limit."""
+        return 'limit reached' in message.lower()
 
 
 class ClaudeCLIClient:
@@ -72,12 +140,12 @@ class ClaudeCLIClient:
             prompt = "\n\n".join(prompt_parts)
 
             # Call Claude CLI
+            # Note: Claude CLI uses --print for non-interactive output
             cmd = [
                 "claude",
+                "--print",  # Non-interactive mode
                 "--model", self.model,
-                "--max-tokens", str(max_tokens),
-                "--temperature", str(temperature),
-                "--json",  # Request JSON output
+                "--output-format", "text",  # Get plain text response
                 prompt
             ]
 
@@ -94,6 +162,11 @@ class ClaudeCLIClient:
             if result.returncode != 0:
                 error_msg = result.stderr or result.stdout
                 logger.error(f"Claude CLI error: {error_msg}")
+                
+                # Check for rate limit error
+                if RateLimitError.is_rate_limit_error(error_msg):
+                    raise RateLimitError(error_msg)
+                
                 raise Exception(f"Claude CLI failed: {error_msg}")
 
             # Parse response
@@ -120,13 +193,12 @@ class ClaudeCLIClient:
                 **(meta or {})
             }
 
-            db = get_db()
             await log_tokens(
                 scope=TokenScope(scope),
                 provider="claude_cli",
                 tokens_input=input_tokens,
                 tokens_output=output_tokens,
-                meta_json=log_meta
+                meta_json=json.dumps(log_meta)
             )
 
             logger.info(
