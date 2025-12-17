@@ -1,0 +1,41 @@
+# === Server Agent vNext: Foundation & Dependencies ===
+# Phase 0: Core infrastructure for autonomous AGI agent
+
+# === Database & Async Drivers ===
+asyncpg==0.29.0                 # PostgreSQL async driver for high-performance database access
+psycopg2-binary==2.9.9          # PostgreSQL driver fallback for synchronous operations
+
+# === Telegram Bot Framework ===
+aiogram==3.4.0                  # Modern async Telegram bot framework (3.x for events, middlewares, filters)
+python-multipart==0.0.6         # File upload support for Telegram bot webhook
+
+# === HTTP & Async Clients ===
+aiohttp==3.9.1                  # Async HTTP client for external API calls
+httpx==0.25.2                   # Modern HTTP client with async support (alternative to requests)
+
+# === Web Framework & Server ===
+fastapi==0.115.6                # Modern async web framework for bot webhook and web UI API
+uvicorn==0.34.0                 # ASGI server for FastAPI deployment
+pydantic==2.10.5                # Data validation and settings management
+pydantic-settings==2.1.0        # Configuration management with .env support
+
+# === AI & API Integrations ===
+anthropic==0.42.0               # Claude API for AI reasoning and decision-making
+python-dotenv==1.0.1            # Environment variable management
+
+# === Testing & Quality ===
+pytest==7.4.3                   # Test framework
+pytest-asyncio==0.23.2          # Async test support
+pytest-cov==4.1.0               # Code coverage reporting
+
+# === Media Processing & Storage ===
+minio==7.2.0                   # MinIO client for S3-compatible object storage
+openai==1.13.3                 # OpenAI API for Whisper transcription
+pypdf==4.1.1                   # PDF text extraction
+python-docx==0.8.11            # DOCX text extraction
+Pillow==10.2.0                 # Image processing (resize, dimensions)
+
+# === Utilities ===
+aiofiles==24.1.0                # Async file operations
+websockets==14.1                # WebSocket support for real-time communication
+pytz==2024.1                    # Timezone support for scheduling
