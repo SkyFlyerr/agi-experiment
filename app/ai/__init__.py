@@ -12,6 +12,7 @@ from .budget import (
 )
 from .client import ClaudeClient, get_claude_client
 from .claude_cli import ClaudeCLIClient, RateLimitError
+from .claude_tools import ClaudeToolsClient, get_claude_tools_client
 from .proactive_prompts import (
     build_proactive_prompt,
     PROACTIVE_SYSTEM_PROMPT,
@@ -41,8 +42,10 @@ __all__ = [
     # Client (proactive)
     "ClaudeClient",
     "ClaudeCLIClient",
+    "ClaudeToolsClient",
     "RateLimitError",
     "get_claude_client",
+    "get_claude_tools_client",
     # Proactive prompts
     "build_proactive_prompt",
     "PROACTIVE_SYSTEM_PROMPT",
