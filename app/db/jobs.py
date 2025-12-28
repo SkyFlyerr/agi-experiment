@@ -31,7 +31,7 @@ async def enqueue_job(
         thread_id: Thread UUID
         trigger_message_id: Message UUID that triggered the job
         mode: Job mode (classify, plan, execute, answer)
-        payload_json: Optional job payload (JSON)
+        payload_json: Optional job payload (JSON dict)
 
     Returns:
         Created ReactiveJob instance

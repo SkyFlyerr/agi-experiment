@@ -9,6 +9,7 @@ from app.db.models import ReactiveJob, JobMode, ApprovalStatus
 from app.db.threads import get_thread_by_id
 from app.db.messages import get_message_by_id
 from app.db.approvals import create_approval, check_approval_status
+from app.db.tasks import create_task, create_subtasks, TaskPriority
 from app.telegram.responses import send_message, send_approval_request
 from app.ai.context import build_conversation_context
 from app.ai.haiku import classify_intent
@@ -18,9 +19,35 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _is_master_chat(chat_id: str) -> bool:
+    """Check if chat_id belongs to Master."""
+    try:
+        chat_id_int = int(chat_id)
+        return chat_id_int in settings.master_chat_ids_list
+    except (ValueError, TypeError):
+        return False
+
+
+def _map_priority(priority_str: str, is_master: bool) -> TaskPriority:
+    """Map priority string to TaskPriority enum, considering if from Master."""
+    priority_map = {
+        "critical": TaskPriority.CRITICAL,
+        "high": TaskPriority.HIGH,
+        "medium": TaskPriority.MEDIUM,
+        "low": TaskPriority.LOW,
+    }
+    base_priority = priority_map.get(priority_str.lower(), TaskPriority.MEDIUM)
+
+    # Elevate priority for Master's tasks
+    if is_master and base_priority in (TaskPriority.MEDIUM, TaskPriority.LOW):
+        return TaskPriority.HIGH
+
+    return base_priority
+
+
 async def handle_classify_job(job: ReactiveJob) -> dict:
     """
-    Handle CLASSIFY job - Use Haiku to classify intent.
+    Handle CLASSIFY job - Use Haiku to classify intent, then create EXECUTE job.
 
     Args:
         job: ReactiveJob instance
@@ -28,6 +55,9 @@ async def handle_classify_job(job: ReactiveJob) -> dict:
     Returns:
         dict with classification results
     """
+    from app.db.jobs import enqueue_job
+    from app.db.models import JobMode
+
     try:
         logger.info(f"Handling CLASSIFY job {job.id}")
 
@@ -58,14 +88,105 @@ async def handle_classify_job(job: ReactiveJob) -> dict:
             f"confidence={classification.confidence:.2f}"
         )
 
+        # Handle TASK intent: create AgentTask for proactive scheduler
+        if classification.intent == "task" and classification.task:
+            is_master = _is_master_chat(thread.chat_id)
+            source = "master" if is_master else "self"
+            priority = _map_priority(classification.task.priority, is_master)
+
+            # Create task in queue
+            agent_task = await create_task(
+                title=classification.task.title,
+                description=classification.task.description,
+                priority=priority,
+                source=source,
+                goal_criteria=classification.task.goal_criteria,
+                thread_id=job.thread_id,
+            )
+
+            logger.info(
+                f"Created AgentTask {agent_task.id}: {agent_task.title} "
+                f"(priority={priority.value}, source={source})"
+            )
+
+            # Create subtasks if present in classification
+            subtasks_created = 0
+            if classification.task.subtasks:
+                subtask_dicts = [
+                    {
+                        "title": st.title,
+                        "description": st.description,
+                        "goal_criteria": st.goal_criteria,
+                    }
+                    for st in classification.task.subtasks
+                ]
+                created_subtasks = await create_subtasks(agent_task.id, subtask_dicts)
+                subtasks_created = len(created_subtasks)
+                logger.info(f"Created {subtasks_created} subtasks for task {agent_task.id}")
+
+            # Send acknowledgement to user
+            subtasks_info = ""
+            if subtasks_created > 0:
+                subtasks_info = f"📋 Subtasks: {subtasks_created}\n\n"
+
+            await send_message(
+                chat_id=thread.chat_id,
+                text=f"✅ Task added: <b>{classification.task.title}</b>\n\n"
+                     f"Priority: {priority.value}\n"
+                     f"Goal: {classification.task.goal_criteria}\n"
+                     f"{subtasks_info}"
+                     f"Starting execution.",
+                thread_id=thread.id,
+            )
+
+            return {
+                "classification": classification.to_dict(),
+                "task_created": True,
+                "task_id": str(agent_task.id),
+                "task_priority": priority.value,
+            }
+
+        # All other intents need execution (including "other" for greetings/casual chat)
+        # Only skip if confidence is very low
+        needs_execution = classification.confidence >= 0.3
+
+        if needs_execution:
+            # Create EXECUTE job with classification data
+            execute_job = await enqueue_job(
+                thread_id=job.thread_id,
+                trigger_message_id=job.trigger_message_id,
+                mode=JobMode.EXECUTE,
+                payload_json={
+                    "classification": classification.to_dict(),
+                    "parent_job_id": str(job.id),
+                },
+            )
+            logger.info(f"Created EXECUTE job {execute_job.id} from CLASSIFY job {job.id}")
+
         # Return classification result
         return {
             "classification": classification.to_dict(),
-            "needs_execution": classification.intent in ["question", "command"],
+            "needs_execution": needs_execution,
+            "execute_job_id": str(execute_job.id) if needs_execution else None,
         }
 
     except Exception as e:
         logger.error(f"Error handling CLASSIFY job {job.id}: {e}", exc_info=True)
+
+        # Fallback: send simple acknowledgement on API errors
+        try:
+            thread = await get_thread_by_id(job.thread_id)
+            if thread:
+                await send_message(
+                    chat_id=thread.chat_id,
+                    text="Got your message! An error occurred during processing, but I'm working on it. 🤖",
+                    thread_id=thread.id,
+                )
+                logger.info(f"Sent fallback response for job {job.id}")
+                return {"fallback": True, "error": str(e)}
+        except Exception as fallback_error:
+            logger.error(f"Fallback also failed: {fallback_error}")
+
         raise
 
 

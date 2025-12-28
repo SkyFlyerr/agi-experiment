@@ -59,7 +59,6 @@ async def send_to_master(details: Dict[str, Any]) -> Dict[str, Any]:
         message_id = await send_message(
             chat_id=chat_id,
             text=formatted_message,
-            parse_mode="HTML",
         )
 
         result = {
@@ -110,7 +109,6 @@ async def proactive_outreach(details: Dict[str, Any]) -> Dict[str, Any]:
         message_id = await send_message(
             chat_id=str(chat_id),
             text=message,
-            parse_mode="HTML",
         )
 
         result = {

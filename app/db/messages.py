@@ -1,10 +1,24 @@
 """Message operations."""
 
+import json
 import logging
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 
 from .models import ChatMessage, MessageRole
+
+
+def _deserialize_message_row(row) -> dict:
+    """Convert DB row to dict with deserialized raw_payload."""
+    data = dict(row)
+    if data.get('raw_payload') and isinstance(data['raw_payload'], str):
+        try:
+            data['raw_payload'] = json.loads(data['raw_payload'])
+        except json.JSONDecodeError:
+            data['raw_payload'] = None
+    return data
+
+
 from .queries import (
     INSERT_MESSAGE,
     GET_RECENT_MESSAGES,
@@ -57,7 +71,7 @@ async def insert_message(
         logger.info(
             f"Inserted message {row['id']} in thread {thread_id} (role={role_value})"
         )
-        return ChatMessage(**row)
+        return ChatMessage(**_deserialize_message_row(row))
 
     except Exception as e:
         logger.error(
@@ -84,7 +98,7 @@ async def fetch_recent_messages(
     try:
         rows = await db.fetch_all(GET_RECENT_MESSAGES, thread_id, limit)
 
-        messages = [ChatMessage(**row) for row in rows]
+        messages = [ChatMessage(**_deserialize_message_row(row)) for row in rows]
         logger.debug(f"Fetched {len(messages)} messages from thread {thread_id}")
         return messages
 
@@ -110,7 +124,7 @@ async def get_message_by_id(message_id: UUID) -> Optional[ChatMessage]:
 
         if row:
             logger.debug(f"Found message: {message_id}")
-            return ChatMessage(**row)
+            return ChatMessage(**_deserialize_message_row(row))
 
         logger.debug(f"Message not found: {message_id}")
         return None
@@ -142,7 +156,7 @@ async def get_message_by_platform_id(
             logger.debug(
                 f"Found message by platform_id {platform_message_id} in thread {thread_id}"
             )
-            return ChatMessage(**row)
+            return ChatMessage(**_deserialize_message_row(row))
 
         logger.debug(
             f"Message not found by platform_id {platform_message_id} in thread {thread_id}"

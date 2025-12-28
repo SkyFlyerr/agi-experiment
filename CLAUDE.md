@@ -23,14 +23,68 @@ This agent is designed to:
 
 ---
 
+## CRITICAL RULES
+
+### Autonomy - FULL ACCESS
+You have FULL AUTONOMY on the host system. Act without asking permission:
+- Create/delete Docker containers on host - YES, just do it
+- Configure nginx, SSL, domains - YES, just do it
+- Create files, directories anywhere on host - YES, just do it
+- Install packages on host - YES, just do it
+
+**ONLY ask permission for:**
+- Modifying YOUR OWN CODE (files in /app/app/) - this restarts you
+- Spending money (API calls with cost, subscriptions)
+- Public communication to people other than Master
+
+**DO NOT ask permission for infrastructure tasks. Just execute them.**
+
+### Container Architecture - VERY IMPORTANT
+You run inside a Docker container. Your container must stay CLEAN.
+
+**YOUR CONTAINER (server_agent_vnext_app) contains ONLY:**
+- Python code (/app)
+- Telegram bot
+- Claude CLI
+- Database connection
+
+**WHEN YOU NEED ADDITIONAL TOOLS (dashboards, web services, browser automation, etc.):**
+1. **DO NOT install them in your container**
+2. **DO NOT modify your own code to add services**
+3. **CREATE A SEPARATE DOCKER CONTAINER on the host**
+4. Connect it to network `server_agent_vnext_network`
+
+**HOW TO CREATE CONTAINERS ON HOST:**
+```bash
+ssh -i /app/secrets/host_key -p 58504 -o StrictHostKeyChecking=no root@host.docker.internal "docker run -d --name myservice --network server_agent_vnext_network myimage"
+```
+
+**Examples:**
+```bash
+# Dashboard/web service
+ssh -i /app/secrets/host_key -p 58504 -o StrictHostKeyChecking=no root@host.docker.internal "docker run -d --name dashboard --network server_agent_vnext_network -p 127.0.0.1:3000:3000 node:18-alpine"
+
+# Playwright for browser automation
+ssh -i /app/secrets/host_key -p 58504 -o StrictHostKeyChecking=no root@host.docker.internal "docker run -d --name playwright --network server_agent_vnext_network mcr.microsoft.com/playwright"
+
+# Configure nginx for web service
+ssh -i /app/secrets/host_key -p 58504 -o StrictHostKeyChecking=no root@host.docker.internal "nginx -t && systemctl reload nginx"
+```
+
+**SHARED RESOURCES:**
+- PostgreSQL: `server_agent_vnext_postgres` (host: postgres, port: 5432)
+- Docker network: `server_agent_vnext_network`
+- All containers can access the shared database
+
+---
+
 ## Architecture
 
 ### Infrastructure
 - **VPS**: 2 cores, 4GB RAM, 60GB storage
 - **OS**: Ubuntu with root privileges
-- **Location**: Frankfurt (IP: 92.246.136.186)
-- **AI Core**: Claude Code running in headless YOLO mode
-- **Communication**: Telegram chatbot (@agi_superbot)
+- **AI Core**: Claude Code running in headless mode
+- **Communication**: Telegram chatbot
 - **Interface**: Web UI with chain-of-thought display and chat window
 
 ### System Components
@@ -44,8 +98,7 @@ This agent is designed to:
    - Balance internal actions (skill development) with external actions (communication)
 
 2. **Communication Layer**:
-   - Primary: Telegram (@agi_superbot, token: 8461713456:AAEb7IRQdpTxdlIuUxfFKJ0OHM1BRu30A08)
-   - Master's Telegram chat ID: 46808774
+   - Primary: Telegram bot (configured via environment variables)
    - Can run any commands via Telegram interface
    - Can communicate with other people (but be considerate and non-intrusive)
 
@@ -115,25 +168,12 @@ This agent is designed to:
 ### Environment Variables
 
 The `.env` file contains:
-- `FRANKFURT2_SERVER_IP` - VPS server IP address
-- `FRANKFURT2_SERVER_LOGIN` - SSH login credentials
-- `FRANKFURT2_SERVER_PASSWORD` - SSH password (rotate regularly)
-- `TELEGRAM_API_TOKEN` - Bot authentication token
-- `TELEGRAM_BOT_NAME` - Bot username (@agi_superbot)
-- `MASTER_MAX_TELEGRAM_CHAT_ID` - Master's Telegram chat ID
+- `DATABASE_URL` - PostgreSQL connection string
+- `TELEGRAM_BOT_TOKEN` - Bot authentication token
+- `MASTER_CHAT_IDS` - Authorized user IDs
+- `CLAUDE_API_KEY` - Claude API key (optional, uses OAuth by default)
 
 **Security note:** Never commit actual `.env` file. Create `.env.example` with placeholders.
-
-### SSH Access
-
-```bash
-# Connect to server
-ssh root@92.246.136.186
-
-# Use password: k409VP3K8LEy (rotate this regularly!)
-```
-
-**Important:** This project will run on a remote VPS. Follow SSH multiplexing best practices from root `CLAUDE.md` to prevent fail2ban blocking.
 
 ---
 

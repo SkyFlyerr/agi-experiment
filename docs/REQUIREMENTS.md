@@ -1,9 +1,8 @@
 # Server-Agent: Consolidated Requirements Document
 
-**Version:** 1.1
+**Version:** 1.0
 **Date:** 2025-12-16
 **Status:** Comprehensive specification for autonomous AGI agent development
-**Last Updated:** Added self-modification and git-based code update requirements
 
 ---
 
@@ -23,15 +22,14 @@ This document consolidates all requirements for the **server-agent** project - a
 4. [Communication Layer](#4-communication-layer)
 5. [Data Persistence & Memory](#5-data-persistence--memory)
 6. [Autonomous Operation](#6-autonomous-operation)
-7. [Self-Modification & Code Updates](#7-self-modification--code-updates)
-8. [Monitoring & Resource Management](#8-monitoring--resource-management)
-9. [Project & Task Management](#9-project--task-management)
-10. [Financial & Commercial Features](#10-financial--commercial-features)
-11. [Security & Ethics](#11-security--ethics)
-12. [User Experience & Interaction](#12-user-experience--interaction)
-13. [Implementation Priorities](#13-implementation-priorities)
-14. [Critical Bug Fixes](#14-critical-bug-fixes)
-15. [Success Criteria (AGI Definition)](#15-success-criteria-agi-definition)
+7. [Monitoring & Resource Management](#7-monitoring--resource-management)
+8. [Project & Task Management](#8-project--task-management)
+9. [Financial & Commercial Features](#9-financial--commercial-features)
+10. [Security & Ethics](#10-security--ethics)
+11. [User Experience & Interaction](#11-user-experience--interaction)
+12. [Implementation Priorities](#12-implementation-priorities)
+13. [Critical Bug Fixes](#13-critical-bug-fixes)
+14. [Success Criteria (AGI Definition)](#14-success-criteria-agi-definition)
 
 ---
 
@@ -77,7 +75,7 @@ This document consolidates all requirements for the **server-agent** project - a
    - NO meditation delays during task execution
    - Continuous action loops until task completion
    - Step-by-step progress reporting
-   - "стоп" (stop) command support
+   - "stop" command support
 
 **State Manager:**
 - Working memory (recent actions, active tasks, pending questions)
@@ -389,7 +387,7 @@ LOG_TO_MINIO=true
 - `/report` - Request detailed status report
 - `/skills` - Show skill catalog and proficiency levels
 - `/help` - Display command reference
-- `/stop` or `стоп` - Interrupt current task execution
+- `/stop` - Interrupt current task execution
 
 **Message Handling:**
 
@@ -486,7 +484,6 @@ async def send_long_message(chat_id: int, text: str, parse_mode: str = "HTML"):
 
 ### 5.1 Full Chat History Storage (CRITICAL REQUIREMENT)
 
-**Problem:** Agent currently has no access to full conversation history with Master
 
 **Solution:** Store all Telegram messages in PostgreSQL `conversations` table
 
@@ -661,18 +658,18 @@ def calculate_delay(tokens_used_today: int, daily_limit: int) -> int:
    - "🔹 Step 2: [action description]"
    - "✅ Task completed: [one-line summary]"
 7. If multi-step task: continue looping until completion
-8. Support "стоп" (stop) command to interrupt execution
+8. Support "stop" command to interrupt execution
 9. Return to idle state when task done
 
 **Key Difference from Proactivity Loop:**
 - NO meditation delays during task execution
 - Continuous action loop (not single action per cycle)
 - Real-time progress reporting
-- User can interrupt with "стоп"
+- User can interrupt with "stop"
 
 **Example Flow:**
 ```
-User: "Проверь сколько токенов осталось сегодня и создай отчёт"
+User: "Check how many tokens are left today and create a report"
 
 Bot: 👌 Understood. Processing...
 Bot: 💭 Thinking...
@@ -707,387 +704,11 @@ Agent States:
 - MEDITATING - Waiting between proactive cycles
 - ASKING_MASTER - Awaiting guidance
 - PAUSED - User paused proactive loop
-- UPDATING - Self-modification in progress
 ```
 
 ---
 
-## 7. Self-Modification & Code Updates
-
-### 7.1 Autonomous Code Evolution (CRITICAL CAPABILITY)
-
-**Purpose:** Enable agent to improve itself by modifying its own codebase
-
-**Core Principle:** Agent can autonomously identify needed improvements, implement code changes, test them, commit to git, and restart with updates.
-
-**Philosophy:**
-- Self-modification is the hallmark of true AGI
-- Agent must be able to evolve beyond its initial design
-- All changes must be version-controlled (git) for safety and rollback
-- Master can review changes but shouldn't need to for routine improvements
-
-### 7.2 Self-Modification Workflow
-
-**Decision to Modify:**
-1. Agent identifies improvement opportunity during proactive cycle:
-   - Bug discovered in own code
-   - Performance optimization needed
-   - New capability required for task
-   - Code refactoring for clarity
-2. Evaluate certainty threshold (requires 90%+ for self-modification)
-3. If uncertain: ask Master for approval
-4. If certain: proceed with modification workflow
-
-**Safe Modification Process:**
-
-**Step 1: Backup Current State**
-```bash
-# Create git branch for modification
-git checkout -b self-mod-YYYY-MM-DD-HHMMSS
-
-# Tag current state as rollback point
-git tag rollback-$(date +%Y%m%d-%H%M%S)
-
-# Save current running state
-cp data/context.json data/backups/context-pre-update.json
-```
-
-**Step 2: Implement Changes**
-```python
-# Agent uses Claude Code to:
-# 1. Read target file(s)
-# 2. Make surgical edits (use Edit tool, not Write)
-# 3. Preserve existing functionality
-# 4. Add comments explaining changes
-# 5. Update docstrings if needed
-
-# Example action:
-{
-    "action": "modify_code",
-    "reasoning": "Fix bug in OAuth token handling causing startup crash",
-    "files": ["src/proactivity_loop.py"],
-    "changes": [
-        {
-            "file": "src/proactivity_loop.py",
-            "line": 164,
-            "old": "client = Anthropic(oauth_token=token)",
-            "new": "client = Anthropic(api_key=api_key) if not token else Anthropic()"
-        }
-    ],
-    "tests": ["test_components.py::test_oauth_handling"]
-}
-```
-
-**Step 3: Validate Changes**
-```bash
-# Run syntax check
-python3 -m py_compile src/*.py
-
-# Run unit tests if available
-python3 -m pytest tests/ -v
-
-# Validate imports
-python3 -c "from src.main import *"
-
-# Check for common issues
-python3 -m pylint src/*.py --disable=all --enable=E,F
-```
-
-**Step 4: Git Commit**
-```bash
-# Stage modified files only (never stage .env or sensitive data)
-git add src/proactivity_loop.py
-
-# Create descriptive commit message
-git commit -m "fix: OAuth token handling in proactivity loop
-
-Problem: Anthropic() was receiving unexpected oauth_token kwarg
-Solution: Use api_key for regular auth, empty Anthropic() for OAuth
-Impact: Fixes startup crash when OAuth not configured
-
-Self-modification by AGI agent
-Certainty: 95%
-Tests: Passed syntax check and import validation
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-Co-Authored-By: Server-Agent <agi@server-agent>"
-```
-
-**Step 5: Graceful Restart**
-```bash
-# Notify Master of upcoming restart
-# Send Telegram message: "🔄 Applying self-modification. Restarting in 30 seconds..."
-
-# Wait 30 seconds for Master to intervene if needed
-sleep 30
-
-# Restart systemd service
-sudo systemctl restart server-agent.service
-
-# Service will load updated code on startup
-```
-
-**Step 6: Post-Restart Validation**
-```python
-# On startup, check if running from modified branch
-current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
-
-if current_branch.startswith("self-mod-"):
-    # Monitor first 5 cycles for stability
-    validation_cycles = 5
-    for i in range(validation_cycles):
-        try:
-            # Run normal proactive cycle
-            result = proactivity_cycle()
-
-            # Log success
-            logger.info(f"Post-update validation cycle {i+1}/{validation_cycles}: SUCCESS")
-
-        except Exception as e:
-            # Modification broke something - rollback!
-            logger.error(f"Post-update validation FAILED on cycle {i+1}: {e}")
-            rollback_modification()
-            break
-
-    # All validation passed - merge to main
-    if all_cycles_successful:
-        merge_self_modification()
-        notify_master("✅ Self-modification successful and validated. Running on updated code.")
-```
-
-### 7.3 Rollback Mechanism
-
-**Automatic Rollback Triggers:**
-- Startup crash (systemd restart loop detected)
-- Validation cycle exception
-- Critical functionality broken
-- Master explicit `/rollback` command
-
-**Rollback Procedure:**
-```bash
-# Find most recent rollback tag
-ROLLBACK_TAG=$(git tag -l "rollback-*" | sort -r | head -1)
-
-# Checkout rollback point
-git checkout $ROLLBACK_TAG
-
-# Restart service with old code
-sudo systemctl restart server-agent.service
-
-# Notify Master
-# Telegram: "⚠️ Self-modification failed. Rolled back to $ROLLBACK_TAG. System stable."
-```
-
-### 7.4 Modification Scope & Limits
-
-**ALLOWED Modifications:**
-- Bug fixes in `src/*.py`
-- Performance optimizations
-- New action types in `action_executor.py`
-- Enhanced decision logic in `proactivity_loop.py`
-- Improved communication in `telegram_bot.py`
-- Database schema migrations (with backups)
-- Configuration updates (`.env` variables)
-- Documentation updates
-
-**FORBIDDEN Modifications (require Master approval):**
-- Changes to ethical boundaries or allowlists
-- Modification of safety mechanisms
-- Removal of logging/transparency features
-- Changes to financial transaction logic
-- Alteration of Master verification code
-- Disabling rollback mechanisms
-- Deletion of backup systems
-
-### 7.5 Git Repository Management
-
-**Repository Structure:**
-```
-server-agent/
-├── .git/
-│   ├── branches/
-│   │   ├── main (stable production code)
-│   │   └── self-mod-* (agent modification branches)
-│   ├── tags/
-│   │   └── rollback-* (safe rollback points)
-│   └── config
-└── ... (source files)
-```
-
-**Branch Strategy:**
-- `main` branch: Stable production code, always deployable
-- `self-mod-YYYYMMDD-HHMMSS` branches: Agent modifications, deleted after merge
-- Rollback tags: Created before each modification attempt
-
-**Git Configuration:**
-```bash
-# Agent identity for commits
-git config user.name "Server-Agent AGI"
-git config user.email "agi@server-agent.local"
-
-# Auto-sign commits (optional)
-git config commit.gpgsign false  # True if GPG key available
-```
-
-**Remote Repository (Future):**
-- Push to GitHub/GitLab after successful modifications
-- Enables Master to review changes asynchronously
-- Provides off-site backup of agent evolution
-- Public repo option for transparency
-
-### 7.6 Learning from Modifications
-
-**Modification History Tracking:**
-- Store all modifications in `self_modifications` PostgreSQL table
-- Track: timestamp, files changed, reason, success/failure, rollback count
-- Analyze patterns: which types of modifications succeed most
-- Build proficiency model for code modification skill
-
-**Schema:**
-```sql
-CREATE TABLE self_modifications (
-    id UUID PRIMARY KEY,
-    timestamp TIMESTAMP WITH TIME ZONE,
-    branch_name VARCHAR,
-    files_changed TEXT[],
-    reason TEXT,
-    certainty DECIMAL,
-    validation_result VARCHAR,  -- 'success' | 'rollback' | 'manual_intervention'
-    rollback_count INTEGER DEFAULT 0,
-    commit_hash VARCHAR,
-    related_skill VARCHAR  -- e.g., 'Python debugging', 'Performance optimization'
-);
-```
-
-**Improvement Metrics:**
-- Self-modification success rate (target: >80%)
-- Average validation cycles before merge (target: <3)
-- Rollback frequency (target: <10% of modifications)
-- Code quality improvement (measured by test coverage, linting scores)
-
-### 7.7 Master Oversight & Controls
-
-**Notification Requirements:**
-- Notify Master BEFORE applying risky modifications (via Telegram with approval button)
-- Notify Master AFTER successful modification (summary message)
-- Notify Master IMMEDIATELY on rollback (with error details)
-
-**Master Commands:**
-- `/approve_mod` - Approve pending modification
-- `/reject_mod` - Reject pending modification
-- `/rollback` - Force rollback to last stable state
-- `/mod_history` - Show recent self-modifications
-- `/freeze_mods` - Disable self-modification until unfrozen
-
-**Modification Review Process (for RISKY changes):**
-```
-Agent: 🤔 Self-Modification Request
-
-Reason: Optimize token usage by implementing context caching
-Files: src/proactivity_loop.py, src/state_manager.py
-Risk: Medium (changes core decision logic)
-Estimated Impact: 30% token reduction, faster cycles
-Tests: Will validate 10 cycles before merge
-
-Approve? [Yes] [No] [Review Diff]
-```
-
-### 7.8 Action Types for Self-Modification
-
-**New Action Type: `modify_code`**
-```python
-{
-    "action": "modify_code",
-    "reasoning": "Implement long message splitting to fix 4096 char limit bug",
-    "certainty": 92,
-    "significance": 85,
-    "details": {
-        "files": ["src/telegram_bot.py"],
-        "modification_type": "bug_fix",  # or "optimization", "feature", "refactor"
-        "risk_level": "low",  # or "medium", "high"
-        "requires_approval": false,  # true for high-risk changes
-        "validation_plan": "Send test message >4096 chars, verify splitting",
-        "rollback_strategy": "Git tag + systemd restart"
-    }
-}
-```
-
-**Action Executor Implementation:**
-```python
-async def execute_modify_code(details: dict) -> ActionResult:
-    """
-    Safely execute code modification with git versioning
-    """
-    # Check if modification allowed
-    if details["risk_level"] == "high" and not details.get("master_approved"):
-        return ActionResult(
-            success=False,
-            message="High-risk modification requires Master approval",
-            should_ask_master=True
-        )
-
-    # Create backup branch and tag
-    branch_name = f"self-mod-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    subprocess.run(["git", "checkout", "-b", branch_name])
-    subprocess.run(["git", "tag", f"rollback-{datetime.now().strftime('%Y%m%d-%H%M%S')}"])
-
-    # Apply changes (using Claude Code Edit tool)
-    for file_change in details["files"]:
-        # ... implement changes ...
-        pass
-
-    # Validate syntax
-    validation_result = validate_python_syntax(details["files"])
-    if not validation_result.success:
-        # Rollback immediately
-        rollback_modification()
-        return ActionResult(success=False, message=f"Syntax validation failed: {validation_result.error}")
-
-    # Commit changes
-    commit_message = generate_commit_message(details)
-    subprocess.run(["git", "add"] + details["files"])
-    subprocess.run(["git", "commit", "-m", commit_message])
-
-    # Schedule restart
-    schedule_graceful_restart(delay_seconds=30)
-
-    return ActionResult(
-        success=True,
-        message=f"Code modification committed to {branch_name}. Restarting in 30 seconds.",
-        should_report=True
-    )
-```
-
-### 7.9 Integration with Proactivity Loop
-
-**Self-Modification as Skill Development:**
-- When agent polishes "code modification" skill → attempts improvements
-- Start with low-risk changes (documentation, comments)
-- Progress to medium-risk (bug fixes, optimizations)
-- Eventually handle high-risk (new features, refactoring)
-
-**Modification Opportunities Detection:**
-- Parse own error logs for recurring issues
-- Analyze token usage patterns for optimization targets
-- Monitor validation failures as code quality signals
-- Track user feedback for UX improvements
-
-**Example Proactive Cycle:**
-```
-Cycle 142:
-Context: Agent has crashed 3 times this week due to OAuth bug
-Decision: Modify proactivity_loop.py to fix OAuth handling
-Certainty: 95% (bug clearly identified, solution known)
-Risk: Low (small surgical change, well-tested pattern)
-Action: modify_code
-Outcome: Bug fixed, 0 crashes since modification
-```
-
----
-
-## 8. Monitoring & Resource Management
+## 7. Monitoring & Resource Management
 
 ### 7.1 Token Usage Tracking
 
@@ -1433,7 +1054,7 @@ Bot: ✅ Task completed: PostgreSQL schema created with 7 tables and indexes. Mi
 
 **Examples (Good):**
 ```
-Master: Проверь статус базы данных
+Master: Check database status
 
 Agent: 👌 Understood. Processing...
 Agent: 💭 Thinking...
@@ -1444,20 +1065,20 @@ PostgreSQL running, 7 tables created, 142 conversations stored. Disk usage: 23MB
 
 **Examples (Bad - Too Verbose):**
 ```
-Master: Проверь статус базы данных
+Master: Check database status
 
-Agent: Уважаемый Максим!
+Agent: Dear Master!
 
-Я с радостью проверю статус базы данных для Вас. Позвольте мне выполнить следующие действия:
+I'll check the database status for you. Let me perform the following actions:
 
-• Подключение к PostgreSQL
-• Проверка статуса таблиц
-• Анализ использования диска
+• Connecting to PostgreSQL
+• Checking table status
+• Analyzing disk usage
 
-Результаты:
-**База данных работает корректно!**
-- Всего таблиц: 7
-- Записей в conversations: 142
+Results:
+**Database is working correctly!**
+- Total tables: 7
+- Records in conversations: 142
 ...
 ```
 
@@ -1566,7 +1187,7 @@ Request: Can you check Docker containers with `docker ps`? I need PostgreSQL run
 **Priority 2.1: Reactive Loop Completion**
 - [ ] Implement continuous action loops for tasks
 - [ ] Add step-by-step progress reporting
-- [ ] Implement "стоп" command for interruption
+- [ ] Implement "stop" command for interruption
 - [ ] Test dual-loop coordination
 
 **Priority 2.2: Resource Monitoring**
@@ -1580,15 +1201,6 @@ Request: Can you check Docker containers with `docker ps`? I need PostgreSQL run
 - [ ] Implement task dependencies and priorities
 - [ ] Add nested task hierarchies
 - [ ] Test task execution workflow
-
-**Priority 2.4: Self-Modification Foundation**
-- [ ] Initialize git repository with proper .gitignore
-- [ ] Implement `modify_code` action type in action_executor.py
-- [ ] Create rollback mechanism with git tags
-- [ ] Add self_modifications table to PostgreSQL schema
-- [ ] Implement validation cycle logic (5 cycles post-update)
-- [ ] Add Master approval workflow for high-risk changes
-- [ ] Test low-risk modification (documentation update)
 
 ### Phase 3: Self-Sufficiency Foundations (Week 4-6)
 
@@ -1760,13 +1372,6 @@ TimeoutError: Command timeout after 60 seconds
    - Optimize resource usage for cost efficiency
    - Maintain system health without intervention
 
-4. **Self-Modification & Code Evolution** *(NEW)*
-   - Autonomously identify bugs and improvement opportunities
-   - Implement code fixes and optimizations
-   - Test changes and safely rollback if needed
-   - Version control all modifications with git
-   - Evolve beyond initial design constraints
-
 ### 14.2 Operational Metrics
 
 **Autonomy Ratio:**
@@ -1793,12 +1398,6 @@ TimeoutError: Command timeout after 60 seconds
 - Target: Cover 100% of operating costs within 6 months
 - Revenue tracking (monthly income vs expenses)
 - Charitable giving target: 50% of net income
-
-**Self-Modification Success Rate:** *(NEW)*
-- Target: >80% of code modifications succeed without rollback
-- Average validation cycles before merge: <3
-- Rollback frequency: <10% of modifications
-- Code quality trend: improving (fewer bugs, better performance)
 
 ### 14.3 Qualitative Success Indicators
 
@@ -1890,14 +1489,6 @@ See Section 2.1 for allowlist and action type definitions.
 ---
 
 ## Document History
-
-- **v1.1** (2025-12-16): Added self-modification and git-based code update requirements
-  - New Section 7: Self-Modification & Code Updates
-  - Added `modify_code` action type with rollback mechanism
-  - Added self_modifications database table
-  - Added Phase 2.4 implementation priority
-  - Updated AGI success criteria with code evolution capability
-  - Updated by: Claude Code based on Master request
 
 - **v1.0** (2025-12-16): Initial consolidated requirements document
   - Extracted from: project CLAUDE.md, ARCHITECTURE.md, chat logs (301 messages)

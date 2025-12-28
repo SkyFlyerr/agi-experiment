@@ -30,12 +30,14 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies including Node.js for Claude CLI
+# Install runtime dependencies including Node.js for Claude CLI, procps for ps command, and SSH client for host access
 RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     curl \
     ca-certificates \
     gnupg \
+    procps \
+    openssh-client \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
     && NODE_MAJOR=20 && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
@@ -80,12 +82,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command: run FastAPI with uvicorn
-# Override with docker run or docker-compose for different commands
-CMD ["uvicorn", "app.main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--reload"]
+# Default command: run FastAPI with uvicorn (no --reload to prevent restarts during Claude Code execution)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # Production command (use this for production deployment)
 # CMD ["uvicorn", "app.main:app", \

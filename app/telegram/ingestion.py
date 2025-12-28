@@ -1,5 +1,6 @@
 """Message ingestion pipeline for Telegram updates."""
 
+import json
 import logging
 from typing import Optional
 from uuid import UUID
@@ -88,6 +89,7 @@ async def ingest_message(message: NormalizedMessage) -> Optional[UUID]:
         logger.info(f"Thread {thread_id} for chat {message.chat_id}")
 
         # Step 2: Insert message
+        raw_payload_json = json.dumps(message.raw_payload) if message.raw_payload else None
         stored_message = await db.fetch_one(
             INSERT_MESSAGE,
             thread_id,
@@ -95,7 +97,7 @@ async def ingest_message(message: NormalizedMessage) -> Optional[UUID]:
             message.role.value,
             message.user_id,  # author_user_id
             message.text,
-            message.raw_payload
+            raw_payload_json
         )
 
         if not stored_message:

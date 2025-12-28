@@ -67,10 +67,8 @@ MASTER_MAX_TELEGRAM_CHAT_ID=your_telegram_user_id
 # Claude API (get from https://console.anthropic.com/)
 ANTHROPIC_API_KEY=your_anthropic_api_key
 
-# Server (for production deployment)
-FRANKFURT2_SERVER_IP=your_server_ip
-FRANKFURT2_SERVER_LOGIN=your_login
-FRANKFURT2_SERVER_PASSWORD=your_password
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/server_agent
 
 # Agent Configuration (optional, has defaults)
 CERTAINTY_THRESHOLD=0.8
@@ -205,31 +203,42 @@ cat data/context.json | python -m json.tool
 
 ### Deployment to VPS
 
-See [DEPLOYMENT_PROTOCOL.md](../docs/DEPLOYMENT_PROTOCOL.md) for complete deployment workflow.
+#### Option 1: Automatic Deployment (Recommended)
 
-Quick deployment:
+This repository includes GitHub Actions for automatic deployment on push to main/master.
+
+**Setup:**
+1. Configure GitHub Secrets (see [GITHUB_SECRETS_SETUP.md](docs/GITHUB_SECRETS_SETUP.md))
+2. Push to main branch
+3. GitHub Actions will automatically deploy to your VPS
+
+**Required Secrets:**
+- `VPS_HOST`, `VPS_SSH_PORT`, `VPS_USER`, `VPS_SSH_KEY` - Server access
+- `TELEGRAM_API_TOKEN`, `MASTER_TELEGRAM_CHAT_IDS` - Telegram bot
+- `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` - AI services
+- `DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` - Database
+
+The workflow will:
+1. Run tests
+2. Build Docker image
+3. Deploy to VPS via SSH
+4. Run smoke tests
+5. Send Telegram notification
+6. Auto-rollback on failure
+
+#### Option 2: Manual Deployment
+
+See [DEPLOYMENT_PROTOCOL.md](../docs/DEPLOYMENT_PROTOCOL.md) for complete deployment workflow.
 
 ```bash
 # 1. Copy files to server
 rsync -avz --exclude 'venv' --exclude 'data' --exclude 'logs' \
-  ./ root@92.246.136.186:/opt/server-agent/
+  ./ root@your-server:/opt/server-agent/
 
-# 2. SSH to server
-ssh root@92.246.136.186
-
-# 3. Setup on server
+# 2. SSH to server and deploy
+ssh root@your-server
 cd /opt/server-agent
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# 4. Configure systemd service (create service file)
-sudo nano /etc/systemd/system/server-agent.service
-
-# 5. Start service
-sudo systemctl start server-agent
-sudo systemctl enable server-agent
-sudo systemctl status server-agent
+docker compose -f docker-compose-vnext.yml up -d --build
 ```
 
 ## Best Practices Applied

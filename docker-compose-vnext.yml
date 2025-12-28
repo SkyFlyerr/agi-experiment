@@ -76,12 +76,19 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
 
+    # Host system access via SSH
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     # Volumes for application data and logs
     volumes:
-      - ./app:/app/app:ro                    # Read-only app code mount
+      - ./app:/app/app                       # Writable app code (agent can update itself)
       - ./logs:/app/logs                      # Persistent logs
       - ./data:/app/data                      # Persistent data directory
       - /usr/bin/claude:/usr/local/bin/claude:ro  # Mount Claude CLI from host
+      - ./secrets/host_key:/app/secrets/host_key:ro  # SSH key for host access
+      - ./CLAUDE.md:/app/CLAUDE.md:ro        # Instructions for Claude Code
+      - ./claude-config/settings.json:/home/agent/.claude/settings.json:ro  # Claude permissions
 
     # Health check for container readiness
     healthcheck:

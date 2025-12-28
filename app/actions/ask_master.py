@@ -11,7 +11,7 @@ from datetime import datetime
 from app.config import settings
 from app.telegram import send_message
 from app.db import get_db
-from app.db.approvals import create_approval, get_approval
+from app.db.approvals import create_approval, check_approval_status
 from app.db.models import ApprovalStatus
 from uuid import uuid4
 
@@ -59,7 +59,6 @@ async def execute(details: Dict[str, Any]) -> Dict[str, Any]:
         message_id = await send_message(
             chat_id=master_chat_id,
             text=message,
-            parse_mode="HTML",
         )
 
         # Create approval record in database
@@ -91,7 +90,7 @@ async def execute(details: Dict[str, Any]) -> Dict[str, Any]:
             elapsed = (datetime.utcnow() - start_time).total_seconds()
 
             # Check if approval was resolved
-            updated_approval = await get_approval(approval.id)
+            updated_approval = await check_approval_status(approval.id)
 
             if updated_approval and updated_approval.status != ApprovalStatus.PENDING:
                 logger.info(

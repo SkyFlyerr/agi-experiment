@@ -1,12 +1,29 @@
 """Database connection manager with async connection pool."""
 
 import asyncpg
+import json
 import logging
 from contextlib import asynccontextmanager
 from typing import Any, Optional, List, Dict
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
+
+
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    """Initialize connection with JSON codec for JSONB columns."""
+    await conn.set_type_codec(
+        'jsonb',
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema='pg_catalog'
+    )
+    await conn.set_type_codec(
+        'json',
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema='pg_catalog'
+    )
 
 
 class Database:
@@ -38,6 +55,7 @@ class Database:
                 min_size=self.min_size,
                 max_size=self.max_size,
                 command_timeout=60.0,
+                init=_init_connection,
             )
             logger.info(
                 f"Database pool created (min_size={self.min_size}, max_size={self.max_size})"

@@ -16,7 +16,10 @@ _bot: Optional[Bot] = None
 
 async def init_bot() -> Bot:
     """
-    Initialize Telegram bot and set webhook.
+    Initialize Telegram bot.
+
+    If TELEGRAM_USE_POLLING is True, webhook will not be set.
+    Otherwise, webhook will be configured if TELEGRAM_WEBHOOK_URL is provided.
 
     Returns:
         Bot instance
@@ -35,6 +38,23 @@ async def init_bot() -> Bot:
         )
 
         logger.info("Bot initialized successfully")
+
+        # Use polling mode - don't set webhook
+        if settings.TELEGRAM_USE_POLLING:
+            # Delete any existing webhook with retry
+            import asyncio
+            for attempt in range(3):
+                try:
+                    await _bot.delete_webhook(drop_pending_updates=False)
+                    logger.info("Polling mode enabled, webhook deleted")
+                    break
+                except Exception as e:
+                    if attempt < 2:
+                        logger.warning(f"delete_webhook failed (attempt {attempt+1}), retrying in 5s: {e}")
+                        await asyncio.sleep(5)
+                    else:
+                        logger.warning(f"delete_webhook failed after 3 attempts, continuing anyway: {e}")
+            return _bot
 
         # Set webhook if URL is configured
         if settings.TELEGRAM_WEBHOOK_URL:

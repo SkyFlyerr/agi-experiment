@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_WEBHOOK_SECRET: str = ""
     TELEGRAM_WEBHOOK_URL: str = ""
+    TELEGRAM_USE_POLLING: bool = True  # Use polling instead of webhook (no SSL required)
     MASTER_CHAT_IDS: str = "46808774"  # Comma-separated list
 
     # Claude Code

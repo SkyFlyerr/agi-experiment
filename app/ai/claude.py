@@ -1,18 +1,19 @@
-"""Claude execution for reactive jobs."""
+"""Claude execution for reactive jobs using ClaudeCLIClient."""
 
 import logging
-from typing import List
+from typing import List, Dict, Any
 from uuid import UUID
-
-from anthropic import AsyncAnthropic
-from anthropic.types import Message
 
 from app.config import settings
 from app.db.models import ChatMessage, TokenScope
 from app.db.tokens import log_tokens
+from app.ai.client import get_claude_client
 from .prompts import EXECUTION_SYSTEM_PROMPT, build_execution_prompt
 
 logger = logging.getLogger(__name__)
+
+# Maximum tool execution iterations to prevent infinite loops
+MAX_TOOL_ITERATIONS = 10
 
 
 class ExecutionResult:
@@ -22,11 +23,13 @@ class ExecutionResult:
         self,
         response_text: str,
         tool_calls: list = None,
+        tool_results: list = None,
         tokens_input: int = 0,
         tokens_output: int = 0,
     ):
         self.response_text = response_text
         self.tool_calls = tool_calls or []
+        self.tool_results = tool_results or []
         self.tokens_input = tokens_input
         self.tokens_output = tokens_output
 
@@ -45,7 +48,10 @@ async def execute_task(
     max_tokens: int = 4000,
 ) -> ExecutionResult:
     """
-    Execute task using Claude.
+    Execute task using Claude via ClaudeCLIClient.
+
+    Uses the unified client that automatically handles OAuth tokens
+    by routing to Claude CLI.
 
     Args:
         messages: Full conversation history (up to 30 messages)
@@ -56,7 +62,7 @@ async def execute_task(
         max_tokens: Maximum tokens for response (default: 4000)
 
     Returns:
-        ExecutionResult with response text and tool calls
+        ExecutionResult with response text
 
     Raises:
         Exception: If API call fails
@@ -67,64 +73,35 @@ async def execute_task(
 
         logger.info(f"Executing task with Claude (intent={intent})")
 
-        # Initialize Anthropic client
-        client = AsyncAnthropic(api_key=settings.CLAUDE_CODE_OAUTH_TOKEN)
+        # Get Claude client (auto-selects CLI for OAuth tokens)
+        client = get_claude_client()
 
-        # Call Claude API
-        response: Message = await client.messages.create(
-            model="claude-sonnet-4-20250514",  # Latest Sonnet model
-            max_tokens=max_tokens,
+        # Call Claude
+        response = await client.send_message(
+            messages=[{"role": "user", "content": user_prompt}],
             system=EXECUTION_SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                }
-            ],
-            timeout=120.0,  # 2 minute timeout
-        )
-
-        # Extract response text
-        response_text = ""
-        tool_calls = []
-
-        for block in response.content:
-            if block.type == "text":
-                response_text += block.text
-            elif block.type == "tool_use":
-                tool_calls.append({
-                    "id": block.id,
-                    "name": block.name,
-                    "input": block.input,
-                })
-
-        logger.debug(f"Claude response: {len(response_text)} chars, {len(tool_calls)} tool calls")
-
-        # Log token usage
-        await log_tokens(
-            scope=TokenScope.REACTIVE,
-            provider="claude",
-            tokens_input=response.usage.input_tokens,
-            tokens_output=response.usage.output_tokens,
-            meta_json={
+            max_tokens=max_tokens,
+            scope="reactive",
+            meta={
                 "job_id": str(job_id) if job_id else None,
-                "model": "claude-sonnet-4-20250514",
                 "intent": intent,
-                "tool_calls": len(tool_calls),
             },
         )
 
+        response_text = response.get("text", "").strip()
+        usage = response.get("usage", {})
+
         # Create result
         result = ExecutionResult(
-            response_text=response_text.strip(),
-            tool_calls=tool_calls,
-            tokens_input=response.usage.input_tokens,
-            tokens_output=response.usage.output_tokens,
+            response_text=response_text,
+            tool_calls=[],
+            tool_results=[],
+            tokens_input=usage.get("input_tokens", 0),
+            tokens_output=usage.get("output_tokens", 0),
         )
 
         logger.info(
-            f"Execution complete: {result.tokens_input + result.tokens_output} tokens, "
-            f"{len(tool_calls)} tool calls"
+            f"Execution complete: {result.tokens_input + result.tokens_output} tokens"
         )
 
         return result

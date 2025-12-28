@@ -19,7 +19,8 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.db import init_db, close_db, get_db
-from app.telegram import init_bot, shutdown_bot
+from app.telegram import init_bot, shutdown_bot, get_bot
+from app.telegram.polling import get_poller
 from app.routes.webhook import router as webhook_router
 from app.workers import ReactiveWorker
 from app.workers.proactive import get_scheduler
@@ -42,9 +43,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     await db.connect()
     logger.info("Database connected")
 
-    # Initialize Telegram bot and webhook
-    await init_bot()
+    # Initialize Telegram bot
+    bot = await init_bot()
     logger.info("Telegram bot initialized")
+
+    # Start Telegram polling if enabled
+    telegram_poller = None
+    if settings.TELEGRAM_USE_POLLING:
+        telegram_poller = await get_poller(bot)
+        await telegram_poller.start()
+        logger.info("Telegram polling started")
 
     # Start reactive worker
     reactive_worker = ReactiveWorker(poll_interval_ms=100)
@@ -67,6 +75,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # Shutdown
     logger.info("Shutting down Server Agent vNext...")
+
+    # Stop Telegram polling if running
+    if telegram_poller and telegram_poller.is_running:
+        await telegram_poller.stop()
+        logger.info("Telegram polling stopped")
 
     # Stop media processor
     media_processor = await get_media_processor()
