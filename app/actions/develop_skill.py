@@ -2,20 +2,32 @@
 
 This module handles internal learning and skill development actions
 using ClaudeToolsClient for real tool execution.
+
+Follows AI Harness patterns from Anthropic research:
+- Focus on one skill per session
+- Document learnings in progress files
+- Update feature_list.json status
+- Maintain clean state
 """
 
 import logging
+import json
 from typing import Dict, Any
 from datetime import datetime
+from pathlib import Path
 
 from app.ai.claude_tools import get_claude_tools_client
 
 logger = logging.getLogger(__name__)
 
-# System prompt for skill development with tools
-SKILL_DEVELOPMENT_PROMPT = """You are an autonomous AGI agent developing a new skill.
+# Paths for harness pattern files
+FEATURE_LIST_PATH = Path("/app/data/feature_list.json")
+PROGRESS_FILE_PATH = Path("/app/data/claude-progress.txt")
 
-You have access to real tools to actually practice and develop this skill:
+# System prompt for skill development with AI Harness patterns
+SKILL_DEVELOPMENT_PROMPT = """You are an autonomous AGI agent developing a skill following AI Harness patterns.
+
+## Available Tools
 - read_file: Read file contents
 - write_file: Create or overwrite files
 - list_directory: List directory contents
@@ -26,14 +38,40 @@ You have access to real tools to actually practice and develop this skill:
 - remember: Store information in long-term memory
 - recall: Retrieve information from memory
 
-IMPORTANT: Don't just describe how you would develop this skill - ACTUALLY DO IT:
-1. Use tools to explore, experiment, and practice
-2. Create files to document your learnings
-3. Test your understanding by actually doing things
-4. Store key insights in memory with the remember tool
-5. Report significant discoveries to Master via Telegram
+## AI Harness Development Pattern
 
-The workspace is at /app - you can create files, run experiments, and learn by doing."""
+Follow this structured approach:
+
+1. **Read Current State**
+   - Check data/feature_list.json for related features
+   - Read data/claude-progress.txt for context
+   - Understand what's already implemented
+
+2. **Practice the Skill**
+   - Actually USE tools to practice
+   - Create test cases to verify understanding
+   - Run experiments and observe results
+
+3. **Document Learnings**
+   - Create /app/skills/{skill_name}.md with findings
+   - Store key insights in memory with remember tool
+   - Update progress file with session notes
+
+4. **Update Feature Status**
+   - If skill relates to a feature in feature_list.json
+   - Update feature status if now passing
+   - NEVER mark as passing without verification tests
+
+5. **Maintain Clean State**
+   - Commit any code changes with descriptive messages
+   - Update progress file
+   - Leave codebase in mergeable state
+
+CRITICAL:
+- Focus on ONE skill completely
+- Test everything before marking as complete
+- Update progress files for session continuity
+- Don't just describe - ACTUALLY DO IT"""
 
 
 async def execute(details: Dict[str, Any]) -> Dict[str, Any]:
@@ -41,11 +79,13 @@ async def execute(details: Dict[str, Any]) -> Dict[str, Any]:
     Execute skill development action using real tools.
 
     Uses ClaudeToolsClient to actually practice and develop skills.
+    Follows AI Harness patterns for systematic skill development.
 
     Args:
         details: Action details containing:
             - skill_name: Name of skill to develop
             - approach: How to develop it
+            - related_feature: Optional feature ID from feature_list.json
             - duration_estimate: Optional estimated duration in minutes
 
     Returns:
@@ -53,29 +93,70 @@ async def execute(details: Dict[str, Any]) -> Dict[str, Any]:
     """
     skill_name = details.get("skill_name", "unknown")
     approach = details.get("approach", "unspecified approach")
+    related_feature = details.get("related_feature", None)
     duration_estimate = details.get("duration_estimate", "unknown")
 
-    logger.info(f"Developing skill with real tools: {skill_name} ({approach})")
+    logger.info(f"Developing skill with AI Harness pattern: {skill_name} ({approach})")
+
+    # Load feature context if related_feature provided
+    feature_context = ""
+    if related_feature:
+        try:
+            if FEATURE_LIST_PATH.exists():
+                with open(FEATURE_LIST_PATH, "r") as f:
+                    feature_list = json.load(f)
+                    for feature in feature_list.get("features", []):
+                        if feature.get("id") == related_feature:
+                            feature_context = f"""
+## Related Feature from feature_list.json
+
+ID: {feature.get('id')}
+Name: {feature.get('name')}
+Status: {feature.get('status')}
+Priority: {feature.get('priority')}
+Steps:
+{chr(10).join('- ' + step for step in feature.get('steps', []))}
+
+If you successfully develop this skill and can verify it works,
+update the feature status to 'passing' in feature_list.json.
+"""
+                            break
+        except Exception as e:
+            logger.warning(f"Could not load feature context: {e}")
 
     try:
         # Get Claude Tools client (with real tool execution)
         client = get_claude_tools_client()
 
-        # Build skill development prompt
-        user_prompt = f"""Develop the following skill by actually practicing it:
+        # Build skill development prompt with harness patterns
+        user_prompt = f"""Develop the following skill using AI Harness patterns:
 
 SKILL: {skill_name}
 APPROACH: {approach}
+RELATED FEATURE: {related_feature or 'None'}
 TIME BUDGET: {duration_estimate} minutes
+{feature_context}
 
-Instructions:
-1. First, use tools to understand the current environment and available resources
-2. Practice the skill by actually doing relevant tasks
-3. Create documentation of what you learned in /app/skills/{skill_name.replace(' ', '_')}.md
-4. Store the most important insights in memory with the remember tool
-5. Summarize your learnings at the end
+## Session Startup (do these first):
+1. Read /app/data/claude-progress.txt to understand current state
+2. Check if there's related context from previous sessions
+3. Understand what's already implemented
 
-Remember: Actually USE the tools to practice and learn, don't just describe what you would do."""
+## Skill Development Steps:
+1. Practice the skill by actually using tools
+2. Create test cases to verify your understanding
+3. Run experiments and observe results
+4. Document learnings in /app/skills/{skill_name.replace(' ', '_').lower()}.md
+
+## Session Cleanup (do these at end):
+1. Store key insights with the remember tool
+2. Update /app/data/claude-progress.txt with:
+   - What you learned
+   - Any issues encountered
+   - Next steps for future sessions
+3. If skill is verified working, update feature status
+
+Remember: ACTUALLY DO IT - use tools, run tests, verify results."""
 
         # Call Claude with tools enabled
         response = await client.send_message_with_tools(
@@ -101,9 +182,21 @@ Remember: Actually USE the tools to practice and learn, don't just describe what
         tools_used = [te["tool_name"] for te in tool_executions]
         logger.info(f"Skill development used tools: {tools_used}")
 
+        # Check if feature was updated
+        feature_updated = False
+        if related_feature and "write_file" in tools_used:
+            # Check if feature_list.json was modified
+            for te in tool_executions:
+                if te.get("tool_name") == "write_file":
+                    tool_input = te.get("tool_input", {})
+                    if "feature_list.json" in str(tool_input.get("path", "")):
+                        feature_updated = True
+                        break
+
         result = {
             "skill_name": skill_name,
             "approach": approach,
+            "related_feature": related_feature,
             "duration_estimate": duration_estimate,
             "status": "completed",
             "timestamp": datetime.utcnow().isoformat(),
@@ -111,10 +204,15 @@ Remember: Actually USE the tools to practice and learn, don't just describe what
             "tools_executed": len(tool_executions),
             "tools_used": tools_used,
             "pending_approvals": len(pending_approvals),
+            "feature_updated": feature_updated,
             "outcome": response_text[:2000] if response_text else "Skill development completed",
+            "harness_pattern": "ai_harness_v1",
         }
 
-        logger.info(f"Skill development completed: {skill_name} with {len(tool_executions)} tool executions")
+        logger.info(
+            f"Skill development completed: {skill_name} with {len(tool_executions)} tool executions"
+            f"{' (feature updated)' if feature_updated else ''}"
+        )
 
         return result
 
@@ -122,9 +220,11 @@ Remember: Actually USE the tools to practice and learn, don't just describe what
         logger.error(f"Error in skill development: {e}", exc_info=True)
         return {
             "skill_name": skill_name,
+            "related_feature": related_feature,
             "status": "error",
             "error": str(e),
             "timestamp": datetime.utcnow().isoformat(),
+            "harness_pattern": "ai_harness_v1",
         }
 
 
