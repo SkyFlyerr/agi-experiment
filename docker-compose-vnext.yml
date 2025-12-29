@@ -63,6 +63,10 @@ services:
     container_name: server_agent_vnext_app
     restart: unless-stopped
 
+    # Use host networking for Claude CLI OAuth compatibility
+    # This is required because Claude CLI's OAuth flow doesn't work through Docker bridge network
+    network_mode: host
+
     # Depends on postgres being healthy
     depends_on:
       postgres:
@@ -72,13 +76,9 @@ services:
     env_file:
       - ./.env.vnext
 
-    # Port exposure for web interface and webhook
-    ports:
-      - "127.0.0.1:8000:8000"
-
-    # Host system access via SSH
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    # Override DATABASE_URL to use localhost instead of postgres hostname (due to host networking)
+    environment:
+      - DATABASE_URL=postgresql://agent:agent_password@127.0.0.1:5432/server_agent
 
     # Volumes for application data and logs
     volumes:
