@@ -13,18 +13,35 @@ from app.db.models import TokenScope
 logger = logging.getLogger(__name__)
 
 
-def get_claude_client(api_key: str = None, model: str = None):
+def get_claude_client(api_key: str = None, model: str = None, prefer_api_key: bool = True):
     """
     Get appropriate Claude client based on API key type.
 
     Args:
-        api_key: API key or OAuth token (if None, uses settings.CLAUDE_CODE_OAUTH_TOKEN)
+        api_key: API key or OAuth token (if None, auto-selects based on prefer_api_key)
         model: Model to use (if None, uses settings.CLAUDE_MODEL)
+        prefer_api_key: If True, prefer ANTHROPIC_API_KEY over OAuth token (default: True)
 
     Returns:
         ClaudeClient or ClaudeCLIClient
     """
-    api_key = api_key or settings.CLAUDE_CODE_OAUTH_TOKEN
+    # Determine which key to use
+    if api_key is None:
+        # Check if we have an Anthropic API key and should prefer it
+        # Note: Empty strings are falsy, so we need to check explicitly
+        anthropic_key = settings.ANTHROPIC_API_KEY if settings.ANTHROPIC_API_KEY else None
+        haiku_key = settings.HAIKU_API_KEY if settings.HAIKU_API_KEY else None
+
+        # Prefer ANTHROPIC_API_KEY, fallback to HAIKU_API_KEY
+        selected_key = anthropic_key or haiku_key
+
+        if prefer_api_key and selected_key:
+            api_key = selected_key
+            logger.info(f"Using Anthropic API key (preferred over OAuth), key starts with: {api_key[:10]}...")
+        else:
+            api_key = settings.CLAUDE_CODE_OAUTH_TOKEN
+            logger.info(f"Using OAuth token, starts with: {api_key[:15] if api_key else 'EMPTY'}...")
+
     model = model or settings.CLAUDE_MODEL
 
     # Check if this is an OAuth token
