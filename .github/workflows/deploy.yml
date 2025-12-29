@@ -109,34 +109,34 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_SSH_PORT }} ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'ENVSSH'
           cd ${{ env.DEPLOY_PATH }}
 
-          # Create .env.vnext
+          # Create .env.vnext (no leading spaces)
           cat > .env.vnext << 'EOF'
-          # Database
-          DATABASE_URL=${{ secrets.DATABASE_URL }}
+# Database
+DATABASE_URL=${{ secrets.DATABASE_URL }}
 
-          # Telegram
-          TELEGRAM_API_TOKEN=${{ secrets.TELEGRAM_API_TOKEN }}
-          TELEGRAM_BOT_NAME=${{ secrets.TELEGRAM_BOT_NAME }}
-          MASTER_TELEGRAM_CHAT_IDS=${{ secrets.MASTER_TELEGRAM_CHAT_IDS }}
+# Telegram
+TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_API_TOKEN }}
+TELEGRAM_BOT_NAME=${{ secrets.TELEGRAM_BOT_NAME }}
+MASTER_CHAT_IDS=${{ secrets.MASTER_TELEGRAM_CHAT_IDS }}
 
-          # Claude
-          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-          CLAUDE_CODE_OAUTH_TOKEN=${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+# Claude
+ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+CLAUDE_CODE_OAUTH_TOKEN=${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          # Agent settings
-          CERTAINTY_THRESHOLD=0.8
-          SIGNIFICANCE_THRESHOLD=0.8
-          MAX_TOKENS_PER_CYCLE=4000
-          DAILY_TOKEN_LIMIT=100000
-          MIN_DELAY_MINUTES=5
-          EOF
+# Agent settings
+CERTAINTY_THRESHOLD=0.8
+SIGNIFICANCE_THRESHOLD=0.8
+MAX_TOKENS_PER_CYCLE=4000
+DAILY_TOKEN_LIMIT=100000
+MIN_DELAY_MINUTES=5
+EOF
 
           # Create .env.postgres.vnext
           cat > .env.postgres.vnext << 'EOF'
-          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-          EOF
+POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+EOF
           ENVSSH
 
       - name: Backup database
