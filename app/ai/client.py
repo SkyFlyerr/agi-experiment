@@ -24,26 +24,24 @@ def get_claude_client(api_key: str = None, model: str = None):
     Returns:
         ClaudeClient or ClaudeCLIClient (ClaudeCLIClient for OAuth tokens)
     """
-    # Determine which key to use - ALWAYS use OAuth token
+    # Determine which key to use - ALWAYS use OAuth token with Claude CLI
     if api_key is None:
         api_key = settings.CLAUDE_CODE_OAUTH_TOKEN
-        if api_key:
-            logger.info(f"Using OAuth token (starts with: {api_key[:15]}...)")
-        else:
+        if not api_key:
             logger.error("CLAUDE_CODE_OAUTH_TOKEN is not set!")
             raise ValueError("CLAUDE_CODE_OAUTH_TOKEN is required but not set")
 
     model = model or settings.CLAUDE_MODEL
 
-    # Always use ClaudeClient - it handles both API keys and OAuth tokens
-    # OAuth tokens (sk-ant-oat*) use auth_token parameter in Anthropic SDK
-    # Regular API keys use api_key parameter
+    # OAuth tokens (sk-ant-oat*) MUST use Claude CLI - they don't work with Anthropic API directly
+    # Regular API keys can use the SDK directly
     if api_key.startswith("sk-ant-oat"):
-        logger.info("Using ClaudeClient with OAuth token (auth_token)")
+        from .claude_cli import ClaudeCLIClient
+        logger.info(f"Using ClaudeCLIClient for OAuth token (starts with: {api_key[:15]}...)")
+        return ClaudeCLIClient(model=model)
     else:
         logger.info("Using ClaudeClient with API key")
-
-    return ClaudeClient(api_key=api_key, model=model)
+        return ClaudeClient(api_key=api_key, model=model)
 
 
 class ClaudeClient:

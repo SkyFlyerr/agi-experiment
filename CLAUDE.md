@@ -4,6 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## 🔑 SSH ACCESS - CRITICAL
+
+**ALWAYS use the correct SSH port from .env file!**
+
+```bash
+# External SSH access (from local machine):
+ssh -i ~/.ssh/frankfurt2_ed25519 -p 58504 root@92.246.136.186
+
+# Or use the connection command from .env:
+source .env && ssh -i $FRANKFURT2_SSH_KEY_PATH -p $FRANKFURT2_SSH_PORT root@$FRANKFURT2_SERVER_IP
+
+# Get container logs:
+ssh -i ~/.ssh/frankfurt2_ed25519 -p 58504 root@92.246.136.186 "cd /opt/server-agent && docker compose -f docker-compose-vnext.yml logs --tail=100 app"
+```
+
+**Port 58504** - NOT 22, NOT 2222!
+
+---
+
 ## Project Overview
 
 **server-agent** is an autonomous AGI agent designed to run continuously on a VPS server. This is not a traditional application - it's a living, self-directed entity that combines AI consciousness with server infrastructure.

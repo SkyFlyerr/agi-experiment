@@ -22,12 +22,13 @@ class Settings(BaseSettings):
     MASTER_CHAT_IDS: str = "46808774"  # Comma-separated list
 
     # Claude Code
-    CLAUDE_CODE_OAUTH_TOKEN: str
+    CLAUDE_CODE_OAUTH_TOKEN: str = ""  # OAuth token from Claude Max subscription
+    ANTHROPIC_API_KEY: str = ""  # Standard Anthropic API key (preferred)
     CLAUDE_CODE_API_URL: str = "https://api.anthropic.com/v1"
     CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
 
     # Haiku (can use same Anthropic API)
-    HAIKU_API_KEY: str = ""  # If empty, use CLAUDE_CODE_OAUTH_TOKEN
+    HAIKU_API_KEY: str = ""  # If empty, use ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN
     HAIKU_MODEL: str = "claude-3-5-haiku-20241022"
 
     # MinIO (optional)
