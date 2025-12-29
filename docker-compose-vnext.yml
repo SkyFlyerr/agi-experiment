@@ -87,9 +87,9 @@ services:
       - ./data:/app/data                      # Persistent data directory
       - /usr/bin/claude:/usr/local/bin/claude:ro  # Mount Claude CLI from host
       - /root/.claude.json:/home/agent/.claude.json:rw  # Claude CLI OAuth config (writable)
+      - /root/.claude:/home/agent/.claude:rw  # Claude CLI entire config directory
       - ./secrets/host_key:/app/secrets/host_key:ro  # SSH key for host access
       - ./CLAUDE.md:/app/CLAUDE.md:ro        # Instructions for Claude Code
-      - ./claude-config/settings.json:/home/agent/.claude/settings.json:ro  # Claude permissions
 
     # Health check for container readiness
     healthcheck:
